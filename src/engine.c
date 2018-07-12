@@ -28,31 +28,96 @@
 */
 
 #include <stdio.h>
+#include <unistd.h>
 
 #define engine
 #include "v09.h"
 
+#define USLEEP 1000
 Byte aca,acb;
 Byte *breg=&aca,*areg=&acb;
 static int tracetrick=0;
+extern long romstart;
 
-#define GETWORD(a) (mem[a]<<8|mem[(a)+1])
-#define SETBYTE(a,n) {if(!(a&0x8000))mem[a]=n;}
-#define SETWORD(a,n) if(!(a&0x8000)){mem[a]=(n)>>8;mem[(a)+1]=n;}
+#ifndef USE_MMU
+
+static Byte mem1(Word adr) {
+    if ((adr&0xfe00)==(IOPAGE&0xfe00)) return do_input(adr&0x1ff);
+    return mem[adr];
+}
+
+static void SETBYTE1(Word a,Byte n) {
+    if ((a&0xfe00)==(IOPAGE&0xfe00)) do_output(a&0x1ff,n);
+    if(!(a>=romstart))mem[a]=n;
+}
+#define mem(a) mem1(a)
+#define SETBYTE(a,n) SETBYTE1(a,n);
+
+#else
+
+int paddr(Word adr, Byte *immu) { 
+    if ((adr&0xfe00)==(IOPAGE&0xfe00)) return memsize-0x10000+adr;
+    return  (immu[ (adr) >> 13 ] <<13 ) + ((adr) & 0x1fff ); 
+}
+
+Byte * mem0(Byte *iphymem, Word adr, Byte *immu) { 
+    return & iphymem[ paddr(adr,immu) ];
+}
+
+Byte mem1(Byte *iphymem, Word adr, Byte *immu) {
+    if ((adr&0xfe00)==(IOPAGE&0xfe00)) return do_input(adr&0x1ff);
+    Byte *p = mem0(iphymem, adr, immu);
+    if(!(p-phymem>=rommemsize)) {
+        return *p;
+    } else {
+        return 0xff;
+    }
+}
+
+#define mem(a) mem1(iphymem,a,immu)
+
+Byte * SETBYTE1(Word a,Byte n, Byte *iphymem,  Byte *immu) { 
+    Word adr = a; 
+    if ((adr&0xfe00)==(IOPAGE&0xfe00)) { 
+        do_output(adr&0x1ff,n); 
+        return mmu;
+    } else {
+       Byte *p = mem0(iphymem, adr,immu); 
+       if(!(p-phymem>=romstart)) { 
+           *p=n; 
+       } 
+    } 
+    return immu;
+} 
+
+#define SETBYTE(a,n) immu=SETBYTE1(a,n,iphymem,immu);
+
+#endif
+
+#define GETWORD(a) (mem(a)<<8|mem((a)+1))
+#define SETWORD(a,n) {Word a1=a;SETBYTE(a1,n>>8);SETBYTE(a1+1,n);}
+
+/* Macros for load and store of accumulators. Can be modified to check
+   for port addresses */
+// #define LOADAC(reg) if((eaddr&0xff00)!=(IOPAGE&0xff00))reg=mem(eaddr);else\
+//            reg=do_input(eaddr&0xff);
+// #define STOREAC(reg) if((eaddr&0xff00)!=(IOPAGE&0xff00))SETBYTE(eaddr,reg)else\
+// 	   do_output(eaddr&0xff,reg);
+
 /* Two bytes of a word are fetched separately because of
    the possible wrap-around at address $ffff and alignment
 */
 
-#define IMMBYTE(b) b=mem[ipcreg++];
+#define IMMBYTE(b) b=mem(ipcreg++);
 #define IMMWORD(w) {w=GETWORD(ipcreg);ipcreg+=2;}
 
 #define PUSHBYTE(b) {--isreg;SETBYTE(isreg,b)}
 #define PUSHWORD(w) {isreg-=2;SETWORD(isreg,w)}
-#define PULLBYTE(b) b=mem[isreg++];
+#define PULLBYTE(b) b=mem(isreg++);
 #define PULLWORD(w) {w=GETWORD(isreg);isreg+=2;}
 #define PSHUBYTE(b) {--iureg;SETBYTE(iureg,b)}
 #define PSHUWORD(w) {iureg-=2;SETWORD(iureg,w)}
-#define PULUBYTE(b) b=mem[iureg++];
+#define PULUBYTE(b) b=mem(iureg++);
 #define PULUWORD(w) {w=GETWORD(iureg);iureg+=2;}
 
 #define SIGNED(b) ((Word)(b&0x80?b|0xff00:b))
@@ -120,24 +185,21 @@ static int tracetrick=0;
 			 case 10: iccreg=val;break;\
 			 case 11: idpreg=val;break;}
 
-/* Macros for load and store of accumulators. Can be modified to check
-   for port addresses */
-#define LOADAC(reg) if((eaddr&0xff00)!=IOPAGE)reg=mem[eaddr];else\
-           reg=do_input(eaddr&0xff);
-#define STOREAC(reg) if((eaddr&0xff00)!=IOPAGE)SETBYTE(eaddr,reg)else\
-	   do_output(eaddr&0xff,reg);
+
+#define LOADAC(reg) reg=mem(eaddr);
+#define STOREAC(reg) SETBYTE(eaddr,reg);
 
 #define LOADREGS ixreg=xreg;iyreg=yreg;\
  iureg=ureg;isreg=sreg;\
  ipcreg=pcreg;\
  iareg=*areg;ibreg=*breg;\
- idpreg=dpreg;iccreg=ccreg;
+ idpreg=dpreg;iccreg=ccreg;immu=mmu;
 
 #define SAVEREGS xreg=ixreg;yreg=iyreg;\
  ureg=iureg;sreg=isreg;\
  pcreg=ipcreg;\
  *areg=iareg;*breg=ibreg;\
- dpreg=idpreg;ccreg=iccreg;
+ dpreg=idpreg;ccreg=iccreg;mmu=immu;
 
 
 unsigned char haspostbyte[] = {
@@ -159,6 +221,8 @@ unsigned char haspostbyte[] = {
   /*F*/      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
             };
 
+extern char *prog ;
+
 void interpr(void)
 {
  Word ixreg,iyreg,iureg,isreg,ipcreg;
@@ -169,11 +233,21 @@ void interpr(void)
  Byte ireg; /* instruction register */
  Byte iflag; /* flag to indicate $10 or $11 prebyte */
  Byte tb;Word tw;
+ Byte *immu = 0; 
+#ifdef USE_MMU
+ Byte *iphymem = (Byte *)phymem;
+#endif 
  LOADREGS
  for(;;){
   if(attention) {
-   if(tracing && ipcreg>=tracelo && ipcreg<=tracehi)
-              {SAVEREGS do_trace(); }
+   if(tracing && ipcreg>=tracelo && ipcreg<=tracehi) {
+        SAVEREGS 
+#ifdef USE_MMU
+        Byte *phyadr = mem0(phymem,ipcreg,immu);
+        prog = (char *)(phyadr - ipcreg);
+#endif
+        do_trace(tracefile); 
+   }
    if(escape){ SAVEREGS do_escape(); LOADREGS }
    if(irq) {
     if(irq==1&&!(iccreg&0x10)) { /* standard IRQ */
@@ -184,14 +258,15 @@ void interpr(void)
    			 PUSHBYTE(idpreg)
    			 PUSHBYTE(ibreg)
    			 PUSHBYTE(iareg)
+   			 iccreg|=0x80;
    			 PUSHBYTE(iccreg)
    			 iccreg|=0x90;
      			 ipcreg=GETWORD(0xfff8);
     }
     if(irq==2&&!(iccreg&0x40)) { /* Fast IRQ */
 			 PUSHWORD(ipcreg)
-   			 PUSHBYTE(iccreg)
    			 iccreg&=0x7f;
+   			 PUSHBYTE(iccreg)
     			 iccreg|=0x50;
     			 ipcreg=GETWORD(0xfff6);
     }
@@ -201,9 +276,9 @@ void interpr(void)
   }
   iflag=0;
  flaginstr:  /* $10 and $11 instructions return here */
-  ireg=mem[ipcreg++];
+  ireg=mem(ipcreg++);
   if(haspostbyte[ireg]) {
-   Byte postbyte=mem[ipcreg++];
+   Byte postbyte=mem(ipcreg++);
    switch(postbyte) {
     case 0x00: eaddr=ixreg;break;
     case 0x01: eaddr=ixreg+1;break;
@@ -472,45 +547,46 @@ void interpr(void)
    }
   }
   switch(ireg) {
-   case 0x00: /*NEG direct*/ DIRECT tw=-mem[eaddr];SETSTATUS(0,mem[eaddr],tw)
+   case 0x00: /*NEG direct*/ DIRECT tw=-mem(eaddr);SETSTATUS(0,mem(eaddr),tw)
                              SETBYTE(eaddr,tw)break;
    case 0x01: break;/*ILLEGAL*/
    case 0x02: break;/*ILLEGAL*/
-   case 0x03: /*COM direct*/ DIRECT  tb=~mem[eaddr];SETNZ8(tb);SEC CLV
+   case 0x03: /*COM direct*/ DIRECT  tb=~mem(eaddr);SETNZ8(tb);SEC CLV
                              SETBYTE(eaddr,tb)break;
-   case 0x04: /*LSR direct*/ DIRECT tb=mem[eaddr];if(tb&0x01)SEC else CLC
+   case 0x04: /*LSR direct*/ DIRECT tb=mem(eaddr);if(tb&0x01)SEC else CLC
                              if(tb&0x10)SEH else CLH tb>>=1;SETNZ8(tb)
                              SETBYTE(eaddr,tb)break;
    case 0x05: break;/* ILLEGAL*/
    case 0x06: /*ROR direct*/ DIRECT tb=(iccreg&0x01)<<7;
-                             if(mem[eaddr]&0x01)SEC else CLC
-                             tw=(mem[eaddr]>>1)+tb;SETNZ8(tw)
+                             if(mem(eaddr)&0x01)SEC else CLC
+                             tw=(mem(eaddr)>>1)+tb;SETNZ8(tw)
                              SETBYTE(eaddr,tw)
                        	     break;
-   case 0x07: /*ASR direct*/ DIRECT tb=mem[eaddr];if(tb&0x01)SEC else CLC
+   case 0x07: /*ASR direct*/ DIRECT tb=mem(eaddr);if(tb&0x01)SEC else CLC
                              if(tb&0x10)SEH else CLH tb>>=1;
                              if(tb&0x40)tb|=0x80;SETBYTE(eaddr,tb)SETNZ8(tb)
                              break;
-   case 0x08: /*ASL direct*/ DIRECT tw=mem[eaddr]<<1;
-                             SETSTATUS(mem[eaddr],mem[eaddr],tw)
+   case 0x08: /*ASL direct*/ DIRECT tw=mem(eaddr)<<1;
+                             SETSTATUS(mem(eaddr),mem(eaddr),tw)
                              SETBYTE(eaddr,tw)break;
-   case 0x09: /*ROL direct*/ DIRECT tb=mem[eaddr];tw=iccreg&0x01;
+   case 0x09: /*ROL direct*/ DIRECT tb=mem(eaddr);tw=iccreg&0x01;
                              if(tb&0x80)SEC else CLC
                              if((tb&0x80)^((tb<<1)&0x80))SEV else CLV
                              tb=(tb<<1)+tw;SETNZ8(tb) SETBYTE(eaddr,tb)break;
-   case 0x0A: /*DEC direct*/ DIRECT tb=mem[eaddr]-1;if(tb==0x7F)SEV else CLV
+   case 0x0A: /*DEC direct*/ DIRECT tb=mem(eaddr)-1;if(tb==0x7F)SEV else CLV
    			     SETNZ8(tb) SETBYTE(eaddr,tb)break;
    case 0x0B: break; /*ILLEGAL*/
-   case 0x0C: /*INC direct*/ DIRECT tb=mem[eaddr]+1;if(tb==0x80)SEV else CLV
+   case 0x0C: /*INC direct*/ DIRECT tb=mem(eaddr)+1;if(tb==0x80)SEV else CLV
    			     SETNZ8(tb) SETBYTE(eaddr,tb)break;
-   case 0x0D: /*TST direct*/ DIRECT tb=mem[eaddr];SETNZ8(tb) break;
+   case 0x0D: /*TST direct*/ DIRECT tb=mem(eaddr);SETNZ8(tb) break;
    case 0x0E: /*JMP direct*/ DIRECT ipcreg=eaddr;break;
    case 0x0F: /*CLR direct*/ DIRECT SETBYTE(eaddr,0);CLN CLV SEZ CLC break;
    case 0x10: /* flag10 */ iflag=1;goto flaginstr;
    case 0x11: /* flag11 */ iflag=2;goto flaginstr;
    case 0x12: /* NOP */ break;
-   case 0x13: /* SYNC */ while(!irq)
-                           ; /* Wait for IRQ */
+   case 0x13: /* SYNC */ 
+                         do  usleep(USLEEP); /* Wait for IRQ */
+                         while(!irq && !attention);
 		         if(iccreg&0x40)tracetrick=1;
 		         break;
    case 0x14: break; /*ILLEGAL*/
@@ -598,8 +674,8 @@ void interpr(void)
  		if(tb&0x80)PULUWORD(ipcreg) break;
    case 0x39: /* RTS*/ PULLWORD(ipcreg) break;
    case 0x3A: /* ABX*/ ixreg+=ibreg; break;
-   case 0x3B: /* RTI*/  tb=iccreg&0x80;
-			PULLBYTE(iccreg)
+   case 0x3B: /* RTI*/  PULLBYTE(iccreg)
+                        tb=iccreg&0x80;
 			if(tb)
  			{
   			 PULLBYTE(iareg)
@@ -621,8 +697,8 @@ void interpr(void)
    			 PUSHBYTE(iccreg)
    			 iccreg&=tb;
                          iccreg|=0x80;
-                      while(!(irq==1&&!(iccreg&0x10)||irq==2&&!(iccreg&0x040)))
-                           ;/* Wait for irq */
+                      do     usleep(USLEEP); /* Wait for IRQ */
+                      while(!attention && !((irq==1&&!(iccreg&0x10))||(irq==2&&!(iccreg&0x040))));
                          if(irq==1)ipcreg=GETWORD(0xfff8);
                          	else ipcreg=GETWORD(0xfff6);
                          irq=0;
@@ -639,8 +715,8 @@ void interpr(void)
    			 PUSHBYTE(idpreg)
    			 PUSHBYTE(ibreg)
    			 PUSHBYTE(iareg)
-   			 PUSHBYTE(iccreg)
    			 iccreg|=0x80;
+   			 PUSHBYTE(iccreg)
    			 if(!iflag)iccreg|=0x50;
    			 switch(iflag) {
                           case 0:ipcreg=GETWORD(0xfffa);break;
@@ -714,81 +790,81 @@ void interpr(void)
    case 0x5D: /*TSTB*/  SETNZ8(ibreg) break;
    case 0x5E: break; /*ILLEGAL*/
    case 0x5F: /*CLRB*/  ibreg=0;CLN CLV SEZ CLC break;
-   case 0x60: /*NEG indexed*/  tw=-mem[eaddr];SETSTATUS(0,mem[eaddr],tw)
+   case 0x60: /*NEG indexed*/  tw=-mem(eaddr);SETSTATUS(0,mem(eaddr),tw)
                              SETBYTE(eaddr,tw)break;
    case 0x61: break;/*ILLEGAL*/
    case 0x62: break;/*ILLEGAL*/
-   case 0x63: /*COM indexed*/   tb=~mem[eaddr];SETNZ8(tb);SEC CLV
+   case 0x63: /*COM indexed*/   tb=~mem(eaddr);SETNZ8(tb);SEC CLV
                              SETBYTE(eaddr,tb)break;
-   case 0x64: /*LSR indexed*/  tb=mem[eaddr];if(tb&0x01)SEC else CLC
+   case 0x64: /*LSR indexed*/  tb=mem(eaddr);if(tb&0x01)SEC else CLC
                              if(tb&0x10)SEH else CLH tb>>=1;SETNZ8(tb)
                              SETBYTE(eaddr,tb)break;
    case 0x65: break;/* ILLEGAL*/
    case 0x66: /*ROR indexed*/  tb=(iccreg&0x01)<<7;
-                             if(mem[eaddr]&0x01)SEC else CLC
-                             tw=(mem[eaddr]>>1)+tb;SETNZ8(tw)
+                             if(mem(eaddr)&0x01)SEC else CLC
+                             tw=(mem(eaddr)>>1)+tb;SETNZ8(tw)
                              SETBYTE(eaddr,tw)
                        	     break;
-   case 0x67: /*ASR indexed*/  tb=mem[eaddr];if(tb&0x01)SEC else CLC
+   case 0x67: /*ASR indexed*/  tb=mem(eaddr);if(tb&0x01)SEC else CLC
                              if(tb&0x10)SEH else CLH tb>>=1;
                              if(tb&0x40)tb|=0x80;SETBYTE(eaddr,tb)SETNZ8(tb)
                              break;
-   case 0x68: /*ASL indexed*/  tw=mem[eaddr]<<1;
-                             SETSTATUS(mem[eaddr],mem[eaddr],tw)
+   case 0x68: /*ASL indexed*/  tw=mem(eaddr)<<1;
+                             SETSTATUS(mem(eaddr),mem(eaddr),tw)
                              SETBYTE(eaddr,tw)break;
-   case 0x69: /*ROL indexed*/  tb=mem[eaddr];tw=iccreg&0x01;
+   case 0x69: /*ROL indexed*/  tb=mem(eaddr);tw=iccreg&0x01;
                              if(tb&0x80)SEC else CLC
                              if((tb&0x80)^((tb<<1)&0x80))SEV else CLV
                              tb=(tb<<1)+tw;SETNZ8(tb) SETBYTE(eaddr,tb)break;
-   case 0x6A: /*DEC indexed*/  tb=mem[eaddr]-1;if(tb==0x7F)SEV else CLV
+   case 0x6A: /*DEC indexed*/  tb=mem(eaddr)-1;if(tb==0x7F)SEV else CLV
    			     SETNZ8(tb) SETBYTE(eaddr,tb)break;
    case 0x6B: break; /*ILLEGAL*/
-   case 0x6C: /*INC indexed*/  tb=mem[eaddr]+1;if(tb==0x80)SEV else CLV
+   case 0x6C: /*INC indexed*/  tb=mem(eaddr)+1;if(tb==0x80)SEV else CLV
    			     SETNZ8(tb) SETBYTE(eaddr,tb)break;
-   case 0x6D: /*TST indexed*/  tb=mem[eaddr];SETNZ8(tb) break;
+   case 0x6D: /*TST indexed*/  tb=mem(eaddr);SETNZ8(tb) break;
    case 0x6E: /*JMP indexed*/  ipcreg=eaddr;break;
    case 0x6F: /*CLR indexed*/  SETBYTE(eaddr,0)CLN CLV SEZ CLC break;
-   case 0x70: /*NEG ext*/ EXTENDED tw=-mem[eaddr];SETSTATUS(0,mem[eaddr],tw)
+   case 0x70: /*NEG ext*/ EXTENDED tw=-mem(eaddr);SETSTATUS(0,mem(eaddr),tw)
                              SETBYTE(eaddr,tw)break;
    case 0x71: break;/*ILLEGAL*/
    case 0x72: break;/*ILLEGAL*/
-   case 0x73: /*COM ext*/ EXTENDED  tb=~mem[eaddr];SETNZ8(tb);SEC CLV
+   case 0x73: /*COM ext*/ EXTENDED  tb=~mem(eaddr);SETNZ8(tb);SEC CLV
                             SETBYTE(eaddr,tb)break;
-   case 0x74: /*LSR ext*/ EXTENDED tb=mem[eaddr];if(tb&0x01)SEC else CLC
+   case 0x74: /*LSR ext*/ EXTENDED tb=mem(eaddr);if(tb&0x01)SEC else CLC
                              if(tb&0x10)SEH else CLH tb>>=1;SETNZ8(tb)
                              SETBYTE(eaddr,tb)break;
    case 0x75: break;/* ILLEGAL*/
    case 0x76: /*ROR ext*/ EXTENDED tb=(iccreg&0x01)<<7;
-                             if(mem[eaddr]&0x01)SEC else CLC
-                             tw=(mem[eaddr]>>1)+tb;SETNZ8(tw)
+                             if(mem(eaddr)&0x01)SEC else CLC
+                             tw=(mem(eaddr)>>1)+tb;SETNZ8(tw)
                              SETBYTE(eaddr,tw)
                        	     break;
-   case 0x77: /*ASR ext*/ EXTENDED tb=mem[eaddr];if(tb&0x01)SEC else CLC
+   case 0x77: /*ASR ext*/ EXTENDED tb=mem(eaddr);if(tb&0x01)SEC else CLC
                              if(tb&0x10)SEH else CLH tb>>=1;
                              if(tb&0x40)tb|=0x80;SETBYTE(eaddr,tb)SETNZ8(tb)
                              break;
-   case 0x78: /*ASL ext*/ EXTENDED tw=mem[eaddr]<<1;
-                             SETSTATUS(mem[eaddr],mem[eaddr],tw)
+   case 0x78: /*ASL ext*/ EXTENDED tw=mem(eaddr)<<1;
+                             SETSTATUS(mem(eaddr),mem(eaddr),tw)
                              SETBYTE(eaddr,tw)break;
-   case 0x79: /*ROL ext*/ EXTENDED tb=mem[eaddr];tw=iccreg&0x01;
+   case 0x79: /*ROL ext*/ EXTENDED tb=mem(eaddr);tw=iccreg&0x01;
                              if(tb&0x80)SEC else CLC
                              if((tb&0x80)^((tb<<1)&0x80))SEV else CLV
                              tb=(tb<<1)+tw;SETNZ8(tb) SETBYTE(eaddr,tb)break;
-   case 0x7A: /*DEC ext*/ EXTENDED tb=mem[eaddr]-1;if(tb==0x7F)SEV else CLV
+   case 0x7A: /*DEC ext*/ EXTENDED tb=mem(eaddr)-1;if(tb==0x7F)SEV else CLV
    			     SETNZ8(tb) SETBYTE(eaddr,tb)break;
    case 0x7B: break; /*ILLEGAL*/
-   case 0x7C: /*INC ext*/ EXTENDED tb=mem[eaddr]+1;if(tb==0x80)SEV else CLV
+   case 0x7C: /*INC ext*/ EXTENDED tb=mem(eaddr)+1;if(tb==0x80)SEV else CLV
    			     SETNZ8(tb) SETBYTE(eaddr,tb)break;
-   case 0x7D: /*TST ext*/ EXTENDED tb=mem[eaddr];SETNZ8(tb) break;
+   case 0x7D: /*TST ext*/ EXTENDED tb=mem(eaddr);SETNZ8(tb) break;
    case 0x7E: /*JMP ext*/ EXTENDED ipcreg=eaddr;break;
    case 0x7F: /*CLR ext*/ EXTENDED SETBYTE(eaddr,0)CLN CLV SEZ CLC break;
-   case 0x80: /*SUBA immediate*/ IMM8 tw=iareg-mem[eaddr];
-                                 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0x80: /*SUBA immediate*/ IMM8 tw=iareg-mem(eaddr);
+                                 SETSTATUS(iareg,mem(eaddr),tw)
                                  iareg=tw;break;
-   case 0x81: /*CMPA immediate*/ IMM8 tw=iareg-mem[eaddr];
-   				 SETSTATUS(iareg,mem[eaddr],tw) break;
-   case 0x82: /*SBCA immediate*/ IMM8 tw=iareg-mem[eaddr]-(iccreg&0x01);
-   				 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0x81: /*CMPA immediate*/ IMM8 tw=iareg-mem(eaddr);
+   				 SETSTATUS(iareg,mem(eaddr),tw) break;
+   case 0x82: /*SBCA immediate*/ IMM8 tw=iareg-mem(eaddr)-(iccreg&0x01);
+   				 SETSTATUS(iareg,mem(eaddr),tw)
    				 iareg=tw;break;
    case 0x83: /*SUBD (CMPD CMPU) immediate*/ IMM16
                                  {unsigned long res,dreg,breg;
@@ -798,23 +874,23 @@ void interpr(void)
                                  SETSTATUSD(dreg,breg,res)
                                  if(iflag==0) SETDREG(res)
                                  }break;
-   case 0x84: /*ANDA immediate*/ IMM8 iareg=iareg&mem[eaddr];SETNZ8(iareg)
+   case 0x84: /*ANDA immediate*/ IMM8 iareg=iareg&mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0x85: /*BITA immediate*/ IMM8 tb=iareg&mem[eaddr];SETNZ8(tb)
+   case 0x85: /*BITA immediate*/ IMM8 tb=iareg&mem(eaddr);SETNZ8(tb)
    				 CLV break;
    case 0x86: /*LDA immediate*/ IMM8 LOADAC(iareg) CLV SETNZ8(iareg)
                                  break;
    case 0x87: /*STA immediate (for the sake of orthogonality) */ IMM8
                                  SETNZ8(iareg) CLV STOREAC(iareg) break;
-   case 0x88: /*EORA immediate*/ IMM8 iareg=iareg^mem[eaddr];SETNZ8(iareg)
+   case 0x88: /*EORA immediate*/ IMM8 iareg=iareg^mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0x89: /*ADCA immediate*/ IMM8 tw=iareg+mem[eaddr]+(iccreg&0x01);
-                                 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0x89: /*ADCA immediate*/ IMM8 tw=iareg+mem(eaddr)+(iccreg&0x01);
+                                 SETSTATUS(iareg,mem(eaddr),tw)
                                  iareg=tw;break;
-   case 0x8A: /*ORA immediate*/  IMM8 iareg=iareg|mem[eaddr];SETNZ8(iareg)
+   case 0x8A: /*ORA immediate*/  IMM8 iareg=iareg|mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0x8B: /*ADDA immediate*/ IMM8 tw=iareg+mem[eaddr];
-   				 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0x8B: /*ADDA immediate*/ IMM8 tw=iareg+mem(eaddr);
+   				 SETSTATUS(iareg,mem(eaddr),tw)
    				 iareg=tw;break;
    case 0x8C: /*CMPX (CMPY CMPS) immediate */ IMM16
                                  {unsigned long dreg,breg,res;
@@ -831,13 +907,13 @@ void interpr(void)
    case 0x8F:  /* STX (STY) immediate (orthogonality) */ IMM16
                                   if(!iflag) tw=ixreg; else tw=iyreg;
                                   CLV SETNZ16(tw) SETWORD(eaddr,tw) break;
-   case 0x90: /*SUBA direct*/ DIRECT tw=iareg-mem[eaddr];
-                                 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0x90: /*SUBA direct*/ DIRECT tw=iareg-mem(eaddr);
+                                 SETSTATUS(iareg,mem(eaddr),tw)
                                  iareg=tw;break;
-   case 0x91: /*CMPA direct*/ DIRECT tw=iareg-mem[eaddr];
-   				 SETSTATUS(iareg,mem[eaddr],tw) break;
-   case 0x92: /*SBCA direct*/ DIRECT tw=iareg-mem[eaddr]-(iccreg&0x01);
-   				 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0x91: /*CMPA direct*/ DIRECT tw=iareg-mem(eaddr);
+   				 SETSTATUS(iareg,mem(eaddr),tw) break;
+   case 0x92: /*SBCA direct*/ DIRECT tw=iareg-mem(eaddr)-(iccreg&0x01);
+   				 SETSTATUS(iareg,mem(eaddr),tw)
    				 iareg=tw;break;
    case 0x93: /*SUBD (CMPD CMPU) direct*/ DIRECT
                                  {unsigned long res,dreg,breg;
@@ -847,23 +923,23 @@ void interpr(void)
                                  SETSTATUSD(dreg,breg,res)
                                  if(iflag==0) SETDREG(res)
                                  }break;
-   case 0x94: /*ANDA direct*/ DIRECT iareg=iareg&mem[eaddr];SETNZ8(iareg)
+   case 0x94: /*ANDA direct*/ DIRECT iareg=iareg&mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0x95: /*BITA direct*/ DIRECT tb=iareg&mem[eaddr];SETNZ8(tb)
+   case 0x95: /*BITA direct*/ DIRECT tb=iareg&mem(eaddr);SETNZ8(tb)
    				 CLV break;
    case 0x96: /*LDA direct*/ DIRECT LOADAC(iareg) CLV SETNZ8(iareg)
                                  break;
    case 0x97: /*STA direct */ DIRECT
                                  SETNZ8(iareg) CLV STOREAC(iareg) break;
-   case 0x98: /*EORA direct*/ DIRECT iareg=iareg^mem[eaddr];SETNZ8(iareg)
+   case 0x98: /*EORA direct*/ DIRECT iareg=iareg^mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0x99: /*ADCA direct*/ DIRECT tw=iareg+mem[eaddr]+(iccreg&0x01);
-                                 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0x99: /*ADCA direct*/ DIRECT tw=iareg+mem(eaddr)+(iccreg&0x01);
+                                 SETSTATUS(iareg,mem(eaddr),tw)
                                  iareg=tw;break;
-   case 0x9A: /*ORA direct*/  DIRECT iareg=iareg|mem[eaddr];SETNZ8(iareg)
+   case 0x9A: /*ORA direct*/  DIRECT iareg=iareg|mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0x9B: /*ADDA direct*/ DIRECT tw=iareg+mem[eaddr];
-   				 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0x9B: /*ADDA direct*/ DIRECT tw=iareg+mem(eaddr);
+   				 SETSTATUS(iareg,mem(eaddr),tw)
    				 iareg=tw;break;
    case 0x9C: /*CMPX (CMPY CMPS) direct */ DIRECT
                                  {unsigned long dreg,breg,res;
@@ -880,13 +956,13 @@ void interpr(void)
    case 0x9F:  /* STX (STY) direct */ DIRECT
                                   if(!iflag) tw=ixreg; else tw=iyreg;
                                   CLV SETNZ16(tw) SETWORD(eaddr,tw) break;
-   case 0xA0: /*SUBA indexed*/  tw=iareg-mem[eaddr];
-                                 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0xA0: /*SUBA indexed*/  tw=iareg-mem(eaddr);
+                                 SETSTATUS(iareg,mem(eaddr),tw)
                                  iareg=tw;break;
-   case 0xA1: /*CMPA indexed*/  tw=iareg-mem[eaddr];
-   				 SETSTATUS(iareg,mem[eaddr],tw) break;
-   case 0xA2: /*SBCA indexed*/  tw=iareg-mem[eaddr]-(iccreg&0x01);
-   				 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0xA1: /*CMPA indexed*/  tw=iareg-mem(eaddr);
+   				 SETSTATUS(iareg,mem(eaddr),tw) break;
+   case 0xA2: /*SBCA indexed*/  tw=iareg-mem(eaddr)-(iccreg&0x01);
+   				 SETSTATUS(iareg,mem(eaddr),tw)
    				 iareg=tw;break;
    case 0xA3: /*SUBD (CMPD CMPU) indexed*/
                                  {unsigned long res,dreg,breg;
@@ -896,23 +972,23 @@ void interpr(void)
                                  SETSTATUSD(dreg,breg,res)
                                  if(iflag==0) SETDREG(res)
                                  }break;
-   case 0xA4: /*ANDA indexed*/  iareg=iareg&mem[eaddr];SETNZ8(iareg)
+   case 0xA4: /*ANDA indexed*/  iareg=iareg&mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0xA5: /*BITA indexed*/  tb=iareg&mem[eaddr];SETNZ8(tb)
+   case 0xA5: /*BITA indexed*/  tb=iareg&mem(eaddr);SETNZ8(tb)
    				 CLV break;
    case 0xA6: /*LDA indexed*/  LOADAC(iareg) CLV SETNZ8(iareg)
                                  break;
    case 0xA7: /*STA indexed */
                                  SETNZ8(iareg) CLV STOREAC(iareg) break;
-   case 0xA8: /*EORA indexed*/  iareg=iareg^mem[eaddr];SETNZ8(iareg)
+   case 0xA8: /*EORA indexed*/  iareg=iareg^mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0xA9: /*ADCA indexed*/  tw=iareg+mem[eaddr]+(iccreg&0x01);
-                                 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0xA9: /*ADCA indexed*/  tw=iareg+mem(eaddr)+(iccreg&0x01);
+                                 SETSTATUS(iareg,mem(eaddr),tw)
                                  iareg=tw;break;
-   case 0xAA: /*ORA indexed*/   iareg=iareg|mem[eaddr];SETNZ8(iareg)
+   case 0xAA: /*ORA indexed*/   iareg=iareg|mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0xAB: /*ADDA indexed*/  tw=iareg+mem[eaddr];
-   				 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0xAB: /*ADDA indexed*/  tw=iareg+mem(eaddr);
+   				 SETSTATUS(iareg,mem(eaddr),tw)
    				 iareg=tw;break;
    case 0xAC: /*CMPX (CMPY CMPS) indexed */
                                  {unsigned long dreg,breg,res;
@@ -929,13 +1005,13 @@ void interpr(void)
    case 0xAF:  /* STX (STY) indexed */
                                   if(!iflag) tw=ixreg; else tw=iyreg;
                                   CLV SETNZ16(tw) SETWORD(eaddr,tw) break;
-   case 0xB0: /*SUBA ext*/ EXTENDED tw=iareg-mem[eaddr];
-                                 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0xB0: /*SUBA ext*/ EXTENDED tw=iareg-mem(eaddr);
+                                 SETSTATUS(iareg,mem(eaddr),tw)
                                  iareg=tw;break;
-   case 0xB1: /*CMPA ext*/ EXTENDED tw=iareg-mem[eaddr];
-   				 SETSTATUS(iareg,mem[eaddr],tw) break;
-   case 0xB2: /*SBCA ext*/ EXTENDED tw=iareg-mem[eaddr]-(iccreg&0x01);
-   				 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0xB1: /*CMPA ext*/ EXTENDED tw=iareg-mem(eaddr);
+   				 SETSTATUS(iareg,mem(eaddr),tw) break;
+   case 0xB2: /*SBCA ext*/ EXTENDED tw=iareg-mem(eaddr)-(iccreg&0x01);
+   				 SETSTATUS(iareg,mem(eaddr),tw)
    				 iareg=tw;break;
    case 0xB3: /*SUBD (CMPD CMPU) ext*/ EXTENDED
                                  {unsigned long res,dreg,breg;
@@ -945,23 +1021,23 @@ void interpr(void)
                                  SETSTATUSD(dreg,breg,res)
                                  if(iflag==0) SETDREG(res)
                                  }break;
-   case 0xB4: /*ANDA ext*/ EXTENDED iareg=iareg&mem[eaddr];SETNZ8(iareg)
+   case 0xB4: /*ANDA ext*/ EXTENDED iareg=iareg&mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0xB5: /*BITA ext*/ EXTENDED tb=iareg&mem[eaddr];SETNZ8(tb)
+   case 0xB5: /*BITA ext*/ EXTENDED tb=iareg&mem(eaddr);SETNZ8(tb)
    				 CLV break;
    case 0xB6: /*LDA ext*/ EXTENDED LOADAC(iareg) CLV SETNZ8(iareg)
                                  break;
    case 0xB7: /*STA ext */ EXTENDED
                                  SETNZ8(iareg) CLV STOREAC(iareg) break;
-   case 0xB8: /*EORA ext*/ EXTENDED iareg=iareg^mem[eaddr];SETNZ8(iareg)
+   case 0xB8: /*EORA ext*/ EXTENDED iareg=iareg^mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0xB9: /*ADCA ext*/ EXTENDED tw=iareg+mem[eaddr]+(iccreg&0x01);
-                                 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0xB9: /*ADCA ext*/ EXTENDED tw=iareg+mem(eaddr)+(iccreg&0x01);
+                                 SETSTATUS(iareg,mem(eaddr),tw)
                                  iareg=tw;break;
-   case 0xBA: /*ORA ext*/  EXTENDED iareg=iareg|mem[eaddr];SETNZ8(iareg)
+   case 0xBA: /*ORA ext*/  EXTENDED iareg=iareg|mem(eaddr);SETNZ8(iareg)
    				 CLV break;
-   case 0xBB: /*ADDA ext*/ EXTENDED tw=iareg+mem[eaddr];
-   				 SETSTATUS(iareg,mem[eaddr],tw)
+   case 0xBB: /*ADDA ext*/ EXTENDED tw=iareg+mem(eaddr);
+   				 SETSTATUS(iareg,mem(eaddr),tw)
    				 iareg=tw;break;
    case 0xBC: /*CMPX (CMPY CMPS) ext */ EXTENDED
                                  {unsigned long dreg,breg,res;
@@ -978,13 +1054,13 @@ void interpr(void)
    case 0xBF:  /* STX (STY) ext */ EXTENDED
                                   if(!iflag) tw=ixreg; else tw=iyreg;
                                   CLV SETNZ16(tw) SETWORD(eaddr,tw) break;
-   case 0xC0: /*SUBB immediate*/ IMM8 tw=ibreg-mem[eaddr];
-                                 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xC0: /*SUBB immediate*/ IMM8 tw=ibreg-mem(eaddr);
+                                 SETSTATUS(ibreg,mem(eaddr),tw)
                                  ibreg=tw;break;
-   case 0xC1: /*CMPB immediate*/ IMM8 tw=ibreg-mem[eaddr];
-   				 SETSTATUS(ibreg,mem[eaddr],tw) break;
-   case 0xC2: /*SBCB immediate*/ IMM8 tw=ibreg-mem[eaddr]-(iccreg&0x01);
-   				 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xC1: /*CMPB immediate*/ IMM8 tw=ibreg-mem(eaddr);
+   				 SETSTATUS(ibreg,mem(eaddr),tw) break;
+   case 0xC2: /*SBCB immediate*/ IMM8 tw=ibreg-mem(eaddr)-(iccreg&0x01);
+   				 SETSTATUS(ibreg,mem(eaddr),tw)
    				 ibreg=tw;break;
    case 0xC3: /*ADDD immediate*/ IMM16
                                  {unsigned long res,dreg,breg;
@@ -994,23 +1070,23 @@ void interpr(void)
                                  SETSTATUSD(dreg,breg,res)
                                  SETDREG(res)
                                  }break;
-   case 0xC4: /*ANDB immediate*/ IMM8 ibreg=ibreg&mem[eaddr];SETNZ8(ibreg)
+   case 0xC4: /*ANDB immediate*/ IMM8 ibreg=ibreg&mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xC5: /*BITB immediate*/ IMM8 tb=ibreg&mem[eaddr];SETNZ8(tb)
+   case 0xC5: /*BITB immediate*/ IMM8 tb=ibreg&mem(eaddr);SETNZ8(tb)
    				 CLV break;
    case 0xC6: /*LDB immediate*/ IMM8 LOADAC(ibreg) CLV SETNZ8(ibreg)
                                  break;
    case 0xC7: /*STB immediate (for the sake of orthogonality) */ IMM8
                                  SETNZ8(ibreg) CLV STOREAC(ibreg) break;
-   case 0xC8: /*EORB immediate*/ IMM8 ibreg=ibreg^mem[eaddr];SETNZ8(ibreg)
+   case 0xC8: /*EORB immediate*/ IMM8 ibreg=ibreg^mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xC9: /*ADCB immediate*/ IMM8 tw=ibreg+mem[eaddr]+(iccreg&0x01);
-                                 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xC9: /*ADCB immediate*/ IMM8 tw=ibreg+mem(eaddr)+(iccreg&0x01);
+                                 SETSTATUS(ibreg,mem(eaddr),tw)
                                  ibreg=tw;break;
-   case 0xCA: /*ORB immediate*/  IMM8 ibreg=ibreg|mem[eaddr];SETNZ8(ibreg)
+   case 0xCA: /*ORB immediate*/  IMM8 ibreg=ibreg|mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xCB: /*ADDB immediate*/ IMM8 tw=ibreg+mem[eaddr];
-   				 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xCB: /*ADDB immediate*/ IMM8 tw=ibreg+mem(eaddr);
+   				 SETSTATUS(ibreg,mem(eaddr),tw)
    				 ibreg=tw;break;
    case 0xCC: /*LDD immediate */ IMM16 tw=GETWORD(eaddr);SETNZ16(tw)
    			         CLV SETDREG(tw) break;
@@ -1023,13 +1099,13 @@ void interpr(void)
    case 0xCF:  /* STU (STS) immediate (orthogonality) */ IMM16
                                   if(!iflag) tw=iureg; else tw=isreg;
                                   CLV SETNZ16(tw) SETWORD(eaddr,tw) break;
-   case 0xD0: /*SUBB direct*/ DIRECT tw=ibreg-mem[eaddr];
-                                 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xD0: /*SUBB direct*/ DIRECT tw=ibreg-mem(eaddr);
+                                 SETSTATUS(ibreg,mem(eaddr),tw)
                                  ibreg=tw;break;
-   case 0xD1: /*CMPB direct*/ DIRECT tw=ibreg-mem[eaddr];
-   				 SETSTATUS(ibreg,mem[eaddr],tw) break;
-   case 0xD2: /*SBCB direct*/ DIRECT tw=ibreg-mem[eaddr]-(iccreg&0x01);
-   				 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xD1: /*CMPB direct*/ DIRECT tw=ibreg-mem(eaddr);
+   				 SETSTATUS(ibreg,mem(eaddr),tw) break;
+   case 0xD2: /*SBCB direct*/ DIRECT tw=ibreg-mem(eaddr)-(iccreg&0x01);
+   				 SETSTATUS(ibreg,mem(eaddr),tw)
    				 ibreg=tw;break;
    case 0xD3: /*ADDD direct*/ DIRECT
                                  {unsigned long res,dreg,breg;
@@ -1039,42 +1115,47 @@ void interpr(void)
                                  SETSTATUSD(dreg,breg,res)
                                  SETDREG(res)
                                  }break;
-   case 0xD4: /*ANDB direct*/ DIRECT ibreg=ibreg&mem[eaddr];SETNZ8(ibreg)
+   case 0xD4: /*ANDB direct*/ DIRECT ibreg=ibreg&mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xD5: /*BITB direct*/ DIRECT tb=ibreg&mem[eaddr];SETNZ8(tb)
+   case 0xD5: /*BITB direct*/ DIRECT tb=ibreg&mem(eaddr);SETNZ8(tb)
    				 CLV break;
    case 0xD6: /*LDB direct*/ DIRECT LOADAC(ibreg) CLV SETNZ8(ibreg)
                                  break;
    case 0xD7: /*STB direct  */ DIRECT
                                  SETNZ8(ibreg) CLV STOREAC(ibreg) break;
-   case 0xD8: /*EORB direct*/ DIRECT ibreg=ibreg^mem[eaddr];SETNZ8(ibreg)
+   case 0xD8: /*EORB direct*/ DIRECT ibreg=ibreg^mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xD9: /*ADCB direct*/ DIRECT tw=ibreg+mem[eaddr]+(iccreg&0x01);
-                                 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xD9: /*ADCB direct*/ DIRECT tw=ibreg+mem(eaddr)+(iccreg&0x01);
+                                 SETSTATUS(ibreg,mem(eaddr),tw)
                                  ibreg=tw;break;
-   case 0xDA: /*ORB direct*/  DIRECT ibreg=ibreg|mem[eaddr];SETNZ8(ibreg)
+   case 0xDA: /*ORB direct*/  DIRECT ibreg=ibreg|mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xDB: /*ADDB direct*/ DIRECT tw=ibreg+mem[eaddr];
-   				 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xDB: /*ADDB direct*/ DIRECT tw=ibreg+mem(eaddr);
+   				 SETSTATUS(ibreg,mem(eaddr),tw)
    				 ibreg=tw;break;
    case 0xDC: /*LDD direct */ DIRECT tw=GETWORD(eaddr);SETNZ16(tw)
    			         CLV SETDREG(tw) break;
    case 0xDD: /*STD direct  */ DIRECT
    				 tw=GETDREG; SETNZ16(tw) CLV
+#ifdef USE_MMU
+                                  STOREAC((tw>>8)&0x0ff); eaddr++;
+                                  STOREAC(tw&0x0ff); break;
+#else
    				 SETWORD(eaddr,tw) break;
+#endif
    case 0xDE: /* LDU (LDS) direct */ DIRECT tw=GETWORD(eaddr);
                                   CLV SETNZ16(tw) if(!iflag)iureg=tw; else
                                   isreg=tw;break;
    case 0xDF:  /* STU (STS) direct  */ DIRECT
                                   if(!iflag) tw=iureg; else tw=isreg;
                                   CLV SETNZ16(tw) SETWORD(eaddr,tw) break;
-   case 0xE0: /*SUBB indexed*/  tw=ibreg-mem[eaddr];
-                                 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xE0: /*SUBB indexed*/  tw=ibreg-mem(eaddr);
+                                 SETSTATUS(ibreg,mem(eaddr),tw)
                                  ibreg=tw;break;
-   case 0xE1: /*CMPB indexed*/  tw=ibreg-mem[eaddr];
-   				 SETSTATUS(ibreg,mem[eaddr],tw) break;
-   case 0xE2: /*SBCB indexed*/  tw=ibreg-mem[eaddr]-(iccreg&0x01);
-   				 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xE1: /*CMPB indexed*/  tw=ibreg-mem(eaddr);
+   				 SETSTATUS(ibreg,mem(eaddr),tw) break;
+   case 0xE2: /*SBCB indexed*/  tw=ibreg-mem(eaddr)-(iccreg&0x01);
+   				 SETSTATUS(ibreg,mem(eaddr),tw)
    				 ibreg=tw;break;
    case 0xE3: /*ADDD indexed*/
                                  {unsigned long res,dreg,breg;
@@ -1084,42 +1165,48 @@ void interpr(void)
                                  SETSTATUSD(dreg,breg,res)
                                  SETDREG(res)
                                  }break;
-   case 0xE4: /*ANDB indexed*/  ibreg=ibreg&mem[eaddr];SETNZ8(ibreg)
+   case 0xE4: /*ANDB indexed*/  ibreg=ibreg&mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xE5: /*BITB indexed*/  tb=ibreg&mem[eaddr];SETNZ8(tb)
+   case 0xE5: /*BITB indexed*/  tb=ibreg&mem(eaddr);SETNZ8(tb)
    				 CLV break;
    case 0xE6: /*LDB indexed*/  LOADAC(ibreg) CLV SETNZ8(ibreg)
                                  break;
    case 0xE7: /*STB indexed  */
                                  SETNZ8(ibreg) CLV STOREAC(ibreg) break;
-   case 0xE8: /*EORB indexed*/  ibreg=ibreg^mem[eaddr];SETNZ8(ibreg)
+   case 0xE8: /*EORB indexed*/  ibreg=ibreg^mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xE9: /*ADCB indexed*/  tw=ibreg+mem[eaddr]+(iccreg&0x01);
-                                 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xE9: /*ADCB indexed*/  tw=ibreg+mem(eaddr)+(iccreg&0x01);
+                                 SETSTATUS(ibreg,mem(eaddr),tw)
                                  ibreg=tw;break;
-   case 0xEA: /*ORB indexed*/   ibreg=ibreg|mem[eaddr];SETNZ8(ibreg)
+   case 0xEA: /*ORB indexed*/   ibreg=ibreg|mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xEB: /*ADDB indexed*/  tw=ibreg+mem[eaddr];
-   				 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xEB: /*ADDB indexed*/  tw=ibreg+mem(eaddr);
+   				 SETSTATUS(ibreg,mem(eaddr),tw)
    				 ibreg=tw;break;
    case 0xEC: /*LDD indexed */  tw=GETWORD(eaddr);SETNZ16(tw)
    			         CLV SETDREG(tw) break;
    case 0xED: /*STD indexed  */
    				 tw=GETDREG; SETNZ16(tw) CLV
+#ifdef USE_MMU
+                                     STOREAC((tw>>8)&0x0ff); eaddr++;
+                                     STOREAC(tw&0x0ff);
+                                     break;
+#else
    				 SETWORD(eaddr,tw) break;
+#endif
    case 0xEE: /* LDU (LDS) indexed */  tw=GETWORD(eaddr);
                                   CLV SETNZ16(tw) if(!iflag)iureg=tw; else
                                   isreg=tw;break;
    case 0xEF:  /* STU (STS) indexed  */
                                   if(!iflag) tw=iureg; else tw=isreg;
                                   CLV SETNZ16(tw) SETWORD(eaddr,tw) break;
-   case 0xF0: /*SUBB ext*/ EXTENDED tw=ibreg-mem[eaddr];
-                                 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xF0: /*SUBB ext*/ EXTENDED tw=ibreg-mem(eaddr);
+                                 SETSTATUS(ibreg,mem(eaddr),tw)
                                  ibreg=tw;break;
-   case 0xF1: /*CMPB ext*/ EXTENDED tw=ibreg-mem[eaddr];
-   				 SETSTATUS(ibreg,mem[eaddr],tw) break;
-   case 0xF2: /*SBCB ext*/ EXTENDED tw=ibreg-mem[eaddr]-(iccreg&0x01);
-   				 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xF1: /*CMPB ext*/ EXTENDED tw=ibreg-mem(eaddr);
+   				 SETSTATUS(ibreg,mem(eaddr),tw) break;
+   case 0xF2: /*SBCB ext*/ EXTENDED tw=ibreg-mem(eaddr)-(iccreg&0x01);
+   				 SETSTATUS(ibreg,mem(eaddr),tw)
    				 ibreg=tw;break;
    case 0xF3: /*ADDD ext*/ EXTENDED
                                  {unsigned long res,dreg,breg;
@@ -1129,29 +1216,35 @@ void interpr(void)
                                  SETSTATUSD(dreg,breg,res)
                                  SETDREG(res)
                                  }break;
-   case 0xF4: /*ANDB ext*/ EXTENDED ibreg=ibreg&mem[eaddr];SETNZ8(ibreg)
+   case 0xF4: /*ANDB ext*/ EXTENDED ibreg=ibreg&mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xF5: /*BITB ext*/ EXTENDED tb=ibreg&mem[eaddr];SETNZ8(tb)
+   case 0xF5: /*BITB ext*/ EXTENDED tb=ibreg&mem(eaddr);SETNZ8(tb)
    				 CLV break;
    case 0xF6: /*LDB ext*/ EXTENDED LOADAC(ibreg) CLV SETNZ8(ibreg)
                                  break;
    case 0xF7: /*STB ext  */ EXTENDED
                                  SETNZ8(ibreg) CLV STOREAC(ibreg) break;
-   case 0xF8: /*EORB ext*/ EXTENDED ibreg=ibreg^mem[eaddr];SETNZ8(ibreg)
+   case 0xF8: /*EORB ext*/ EXTENDED ibreg=ibreg^mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xF9: /*ADCB ext*/ EXTENDED tw=ibreg+mem[eaddr]+(iccreg&0x01);
-                                 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xF9: /*ADCB ext*/ EXTENDED tw=ibreg+mem(eaddr)+(iccreg&0x01);
+                                 SETSTATUS(ibreg,mem(eaddr),tw)
                                  ibreg=tw;break;
-   case 0xFA: /*ORB ext*/  EXTENDED ibreg=ibreg|mem[eaddr];SETNZ8(ibreg)
+   case 0xFA: /*ORB ext*/  EXTENDED ibreg=ibreg|mem(eaddr);SETNZ8(ibreg)
    				 CLV break;
-   case 0xFB: /*ADDB ext*/ EXTENDED tw=ibreg+mem[eaddr];
-   				 SETSTATUS(ibreg,mem[eaddr],tw)
+   case 0xFB: /*ADDB ext*/ EXTENDED tw=ibreg+mem(eaddr);
+   				 SETSTATUS(ibreg,mem(eaddr),tw)
    				 ibreg=tw;break;
    case 0xFC: /*LDD ext */ EXTENDED tw=GETWORD(eaddr);SETNZ16(tw)
    			         CLV SETDREG(tw) break;
    case 0xFD: /*STD ext  */ EXTENDED
    				 tw=GETDREG; SETNZ16(tw) CLV
+#ifdef USE_MMU
+                                     STOREAC((tw>>8)&0x0ff); eaddr++;
+                                     STOREAC(tw&0x0ff);
+                                     break;
+#else
    				 SETWORD(eaddr,tw) break;
+#endif
    case 0xFE: /* LDU (LDS) ext */ EXTENDED tw=GETWORD(eaddr);
                                   CLV SETNZ16(tw) if(!iflag)iureg=tw; else
                                   isreg=tw;break;

@@ -29,6 +29,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <strings.h>
+#include <sys/stat.h>
 
 #define engine extern
 
@@ -36,35 +38,74 @@
 
 FILE *tracefile;
 
-void do_trace(void)
+extern FILE *disk[];
+extern FILE *fp;      // for disasm
+extern char *prog;    // for disasm
+extern void disasm(int,int);
+extern void do_mmu(Word,Byte);
+extern void init_term(void) ;
+
+
+void do_trace(FILE *tracefile)
 {
  Word pc=pcreg;
  Byte ir;
- fprintf(tracefile,"pc=%04x ",pc);
- ir=mem[pc++];
- fprintf(tracefile,"i=%02x ",ir);
- if((ir&0xfe)==0x10)
-    fprintf(tracefile,"%02x ",mem[pc]);else fprintf(tracefile,"   ");
-     fprintf(tracefile,"x=%04x y=%04x u=%04x s=%04x a=%02x b=%02x cc=%02x\n",
+ // fprintf(tracefile,"pc=%04x ",pc);
+ // ir=mem[pc++];
+ // fprintf(tracefile,"i=%02x ",ir); if((ir&0xfe)==0x10) fprintf(tracefile,"%02x ",mem[pc]);else 
+ // fprintf(tracefile,"   ");
+ fprintf(tracefile,"x=%04x y=%04x u=%04x s=%04x a=%02x b=%02x cc=%02x pc=",
                    xreg,yreg,ureg,sreg,*areg,*breg,ccreg);
+ fp = tracefile;
+ disasm(pc,pc);
 } 
- 
+
+char *romfile = "v09.rom";
+long romstart = 0x8000;
+
+long
+filesize(FILE *image)
+{
+    struct stat buf;
+    fstat(fileno(image),&buf);
+    return buf.st_size;
+}
+
+
+void 
 read_image()
 {
  FILE *image;
- if((image=fopen("v09.rom","rb"))==NULL) 
+ if((image=fopen(romfile,"rb"))==NULL) 
   if((image=fopen("../v09.rom","rb"))==NULL) 
    if((image=fopen("..\\v09.rom","rb"))==NULL) {
     perror("v09, image file");
     exit(2);
  }
- fread(mem+0x8000,0x8000,1,image);
+ long len = filesize(image);
+#ifdef USE_MMU
+ phymem = malloc(memsize + len - 0x2000);
+ rommemsize = memsize + len - 0x2000;
+ mem    = phymem + memsize - 0x10000 ;
+ mmu = &mem[0xffa0];
+ prog = (char*)mem;
+ if (romstart==0x8000) {
+     romstart = memsize - 0x10000 + 0xed00 ;
+ }
+ fread(mem+ 0xe000,len,1,image);
+#else
+ if (romstart==0x8000) {
+     romstart = 0x10000 - len; 
+ }
+ fread(mem+(romstart&0xffff),len,1,image);
+#endif
+ mem[0xffa7] = 0x3f;
  fclose(image);
 }
 
 void usage(void)
 {
- fprintf(stderr,"Usage: v09 [-t tracefile [-tl addr] "
+ fprintf(stderr,"Usage: v09 [-rom rom-image] [-l romstart] [-t tracefile [-tl addr] [-nt]"
                 "[-th addr] ]\n[-e escchar] \n");
  exit(1); 
 }
@@ -72,11 +113,13 @@ void usage(void)
 
 #define CHECKARG if(i==argc)usage();else i++;
 
+int
 main(int argc,char *argv[])
 {
- Word loadaddr=0x100;
  char *imagename=0;
  int i;
+ int setterm = 1;
+ memsize = 512*1024;
  escchar='\x1d'; 
  tracelo=0;tracehi=0xffff;
  for(i=1;i<argc;i++) {
@@ -87,6 +130,17 @@ main(int argc,char *argv[])
          exit(2);
      }
      tracing=1;attention=1;    
+   } else if (strcmp(argv[i],"-rom")==0) {
+     i++;
+     timer = 0;  // non standard rom image, don't start timer
+     romfile = argv[i];
+
+   } else if (strcmp(argv[i],"-0")==0) {
+      i++;
+      disk[0] = fopen(argv[i],"r+");
+   } else if (strcmp(argv[i],"-1")==0) {
+      i++;
+      disk[1] = fopen(argv[i],"r+");
    } else if (strcmp(argv[i],"-tl")==0) {
      i++;
      tracelo=strtol(argv[i],(char**)0,0);
@@ -96,6 +150,16 @@ main(int argc,char *argv[])
    } else if (strcmp(argv[i],"-e")==0) {
      i++;
      escchar=strtol(argv[i],(char**)0,0);
+   } else if (strcmp(argv[i],"-l")==0) {
+     i++;
+     romstart=strtol(argv[i],(char**)0,0);
+   } else if (strcmp(argv[i],"-nt")==0) {  // start debugger at the start
+     attention = escape = 1;
+     timer = 0;   // no timer
+   } else if (strcmp(argv[i],"-m")==0) {
+     i++;
+     memsize=strtol(argv[i],(char**)0,0) & ~0xffff;
+     if (memsize < 512*1024) memsize = 512*1024;
    } else usage();
  }   
  #ifdef MSDOS
@@ -105,8 +169,11 @@ main(int argc,char *argv[])
  } 
  #endif
  read_image(); 
- set_term(escchar);
+ init_term();
+ if (setterm) set_term(escchar);
  pcreg=(mem[0xfffe]<<8)+mem[0xffff]; 
+ prog = (char*)mem;  // for disasm
  interpr();
+ return 0;
 }
 

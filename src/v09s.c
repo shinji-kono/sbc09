@@ -372,6 +372,7 @@ Byte * eaddr0() /* effective address for NEG..JMP as byte pointer */
  switch( (ireg & 0x70) >> 4)
  {
   case 0: return mem+zeropage();
+  default:
   case 1:case 2:case 3: return 0; /*canthappen*/
 
   case 4: da_inst_cat("a",-2); return areg;
@@ -379,12 +380,14 @@ Byte * eaddr0() /* effective address for NEG..JMP as byte pointer */
   case 6: da_inst_cat(NULL,2); return mem+postbyte();
   case 7: return mem+direct();
  }
+ 
 }
 
 Word eaddr8()  /* effective address for 8-bits ops. */
 {
  switch( (ireg & 0x30) >> 4)
  {
+  default:
   case 0: return immediate();
   case 1: return zeropage();
   case 2: da_inst_cat(NULL,2); return postbyte();
@@ -396,6 +399,7 @@ Word eaddr16() /* effective address for 16-bits ops. */
 {
  switch( (ireg & 0x30) >> 4)
  {
+  default:
   case 0: da_inst_cat(NULL,-1); return immediate2();
   case 1: da_inst_cat(NULL,-1); return zeropage();
   case 2: da_inst_cat(NULL,1); return postbyte();
@@ -403,6 +407,7 @@ Word eaddr16() /* effective address for 16-bits ops. */
  }
 }
 
+void
 ill() /* illegal opcode==noop */
 {
 }
@@ -427,6 +432,7 @@ ill() /* illegal opcode==noop */
                            if((a^b^res^(res>>1))&0x80)SEV else CLV \
                            if(res&0x100)SEC else CLC SETNZ8((Byte)res)
 
+void
 add()
 {
  Word aop,bop,res;
@@ -440,6 +446,7 @@ add()
  *aaop=res;
 }
 
+void
 sbc()
 {
  Word aop,bop,res;
@@ -453,6 +460,7 @@ sbc()
  *aaop=res;
 }
 
+void
 sub()
 {
  Word aop,bop,res;
@@ -466,6 +474,7 @@ sub()
  *aaop=res;
 }
 
+void
 adc()
 {
  Word aop,bop,res;
@@ -479,6 +488,7 @@ adc()
  *aaop=res;
 }
 
+void
 cmp()
 {
  Word aop,bop,res;
@@ -491,6 +501,7 @@ cmp()
  SETSTATUS(aop,bop,res)
 }
 
+void
 and()
 {
  Byte aop,bop,res;
@@ -505,6 +516,7 @@ and()
  *aaop=res;
 }
 
+void
 or()
 {
  Byte aop,bop,res;
@@ -519,6 +531,7 @@ or()
  *aaop=res;
 }
 
+void
 eor()
 {
  Byte aop,bop,res;
@@ -533,6 +546,7 @@ eor()
  *aaop=res;
 }
 
+void
 bit()
 {
  Byte aop,bop,res;
@@ -546,6 +560,7 @@ bit()
  CLV
 }
 
+void
 ld()
 {
  Byte res;
@@ -558,6 +573,7 @@ ld()
  *aaop=res;
 }
 
+void
 st()
 {
  Byte res;
@@ -570,6 +586,7 @@ st()
  CLV
 }
 
+void
 jsr()
 {
  Word w;
@@ -582,6 +599,7 @@ jsr()
  pcreg=w;
 }
 
+void
 bsr()
 {
  Byte b;
@@ -596,6 +614,7 @@ bsr()
  da_ops(off,NULL,0);
 }
 
+void
 neg()
 {
  Byte *ea;
@@ -610,6 +629,7 @@ neg()
  *ea=r;
 }
 
+void
 com()
 {
  Byte *ea;
@@ -629,6 +649,7 @@ com()
  *ea=r;
 }
 
+void
 lsr()
 {
  Byte *ea;
@@ -644,6 +665,7 @@ lsr()
  *ea=r;
 }
 
+void
 ror()
 {
  Byte *ea;
@@ -659,6 +681,7 @@ ror()
  *ea=r;
 }
 
+void
 asr()
 {
  Byte *ea;
@@ -675,6 +698,7 @@ asr()
  *ea=r;
 }
 
+void
 asl()
 {
  Byte *ea;
@@ -688,6 +712,7 @@ asl()
  *ea=r;
 }
 
+void
 rol()
 {
  Byte *ea;
@@ -704,6 +729,7 @@ rol()
  *ea=r;
 }
 
+void
 inc()
 {
  Byte *ea;
@@ -718,6 +744,7 @@ inc()
  *ea=r;
 }
 
+void
 dec()
 {
  Byte *ea;
@@ -732,6 +759,7 @@ dec()
  *ea=r;
 }
 
+void
 tst()
 {
  Byte r;
@@ -744,6 +772,7 @@ tst()
  CLV
 }
 
+void
 jmp()
 {
  Byte *ea;
@@ -755,6 +784,7 @@ jmp()
  pcreg=ea-mem;
 }
 
+void
 clr()
 {
  Byte *ea;
@@ -764,8 +794,9 @@ clr()
  *ea=0;CLN CLV SEZ CLC
 }
 
-extern (*instrtable[])();
+extern void (*instrtable[])();
 
+void
 flag0()
 {
  if(iflag) /* in case flag already set by previous flag instr don't recurse */
@@ -780,6 +811,7 @@ flag0()
  iflag=0;
 }
 
+void
 flag1()
 {
  if(iflag) /* in case flag already set by previous flag instr don't recurse */
@@ -794,21 +826,25 @@ flag1()
  iflag=0;
 }
 
+void
 nop()
 {
  da_inst("nop",NULL,2);
 }
 
+void
 sync_inst()
 {
  finish();
 }
 
+void
 cwai()
 {
  sync_inst();
 }
 
+void
 lbra()
 {
  Word w;
@@ -822,6 +858,7 @@ lbra()
  da_ops(off,NULL,0);
 }
 
+void
 lbsr()
 {
  Word w;
@@ -836,6 +873,7 @@ lbsr()
  da_ops(off,NULL,0);
 }
 
+void
 daa()
 {
  Word a;
@@ -849,6 +887,7 @@ daa()
  *areg=a;
 }
 
+void
 orcc()
 {
  Byte b;
@@ -860,6 +899,7 @@ orcc()
  ccreg|=b;
 }
 
+void
 andcc()
 {
  Byte b;
@@ -872,6 +912,7 @@ andcc()
  ccreg&=b;
 }
 
+void
 mul()
 {
  Word w;
@@ -882,6 +923,7 @@ mul()
  *dreg=w;
 }
 
+void
 sex()
 {
  Word w;
@@ -891,12 +933,14 @@ sex()
  *dreg=w;
 }
 
+void
 abx()
 {
  da_inst("abx",NULL,3);
  xreg += *breg;
 }
 
+void
 rts()
 {
  da_inst("rts",NULL,5);
@@ -904,6 +948,7 @@ rts()
  PULLWORD(pcreg)
 }
 
+void
 rti()
 {
  Byte x;
@@ -923,6 +968,7 @@ rti()
  PULLWORD(pcreg)
 }
 
+void
 swi()
 {
  int w;
@@ -961,6 +1007,7 @@ Byte *byteregs[]={d_reg,d_reg+1,&ccreg,&dpreg,&fillreg,&fillreg,&fillreg,&fillre
 Byte *byteregs[]={d_reg+1,d_reg,&ccreg,&dpreg,&fillreg,&fillreg,&fillreg,&fillreg};
 #endif
 
+void
 tfr()
 {
  Byte b;
@@ -984,6 +1031,7 @@ tfr()
  }
 }
 
+void
 exg()
 {
  Byte b;
@@ -1018,6 +1066,7 @@ exg()
  }
 }
 
+void
 br(int f)
 {
  Byte b;
@@ -1042,102 +1091,119 @@ br(int f)
 
 #define NXORV  ((ccreg&0x08)^(ccreg&0x02))
 
+void
 bra()
 {
  da_inst(iflag?"l":"","bra",iflag?5:3);
  br(1);
 }
 
+void
 brn()
 {
  da_inst(iflag?"l":"","brn",iflag?5:3);
  br(0);
 }
 
+void
 bhi()
 {
  da_inst(iflag?"l":"","bhi",iflag?5:3);
  br(!(ccreg&0x05));
 }
 
+void
 bls()
 {
  da_inst(iflag?"l":"","bls",iflag?5:3);
  br(ccreg&0x05);
 }
 
+void
 bcc()
 {
  da_inst(iflag?"l":"","bcc",iflag?5:3);
  br(!(ccreg&0x01));
 }
 
+void
 bcs()
 {
  da_inst(iflag?"l":"","bcs",iflag?5:3);
  br(ccreg&0x01);
 }
 
+void
 bne()
 {
  da_inst(iflag?"l":"","bne",iflag?5:3);
  br(!(ccreg&0x04));
 }
 
+void
 beq()
 {
  da_inst(iflag?"l":"","beq",iflag?5:3);
  br(ccreg&0x04);
 }
 
+void
 bvc()
 {
  da_inst(iflag?"l":"","bvc",iflag?5:3);
  br(!(ccreg&0x02));
 }
 
+void
 bvs()
 {
  da_inst(iflag?"l":"","bvs",iflag?5:3);
  br(ccreg&0x02);
 }
 
+void
 bpl()
 {
  da_inst(iflag?"l":"","bpl",iflag?5:3);
  br(!(ccreg&0x08));
 }
 
+void
 bmi()
 {
  da_inst(iflag?"l":"","bmi",iflag?5:3);
  br(ccreg&0x08);
 }
 
+void
 bge()
 {
  da_inst(iflag?"l":"","bge",iflag?5:3);
  br(!NXORV);
 }
 
+void
 blt()
 {
  da_inst(iflag?"l":"","blt",iflag?5:3);
  br(NXORV);
 }
 
+void
 bgt()
 {
  da_inst(iflag?"l":"","bgt",iflag?5:3);
  br(!(NXORV||ccreg&0x04));
 }
 
+void
 ble()
 {
  da_inst(iflag?"l":"","ble",iflag?5:3);
  br(NXORV||ccreg&0x04);
 }
 
+void
 leax()
 {
  Word w;
@@ -1147,6 +1213,7 @@ leax()
  xreg=w;
 }
 
+void
 leay()
 {
  Word w;
@@ -1156,12 +1223,14 @@ leay()
  yreg=w;
 }
 
+void
 leau()
 {
  da_inst("leau",NULL,4);
  ureg=postbyte();
 }
 
+void
 leas()
 {
  da_inst("leas",NULL,4);
@@ -1187,6 +1256,7 @@ int bit_count(Byte b)
 }
 
 
+void
 pshs()
 {
  Byte b;
@@ -1203,6 +1273,7 @@ pshs()
  if(b&0x01)PUSHBYTE(ccreg)
 }
 
+void
 puls()
 {
  Byte b;
@@ -1220,6 +1291,7 @@ puls()
  if(b&0x80)PULLWORD(pcreg)
 }
 
+void
 pshu()
 {
  Byte b;
@@ -1236,6 +1308,7 @@ pshu()
  if(b&0x01)PUSHUBYTE(ccreg)
 }
 
+void
 pulu()
 {
  Byte b;
@@ -1257,6 +1330,7 @@ pulu()
                             if(((res>>1)^a^b^res)&0x8000) SEV else CLV \
                             SETNZ16((Word)res)}
 
+void
 addd()
 {
  unsigned long aop,bop,res;
@@ -1270,6 +1344,7 @@ addd()
  *dreg=res;
 }
 
+void
 subd()
 {
  unsigned long aop,bop,res;
@@ -1294,6 +1369,7 @@ subd()
  if(iflag==0) *dreg=res; /* subd result */
 }
 
+void
 cmpx()
 {
  unsigned long aop,bop,res;
@@ -1317,6 +1393,7 @@ cmpx()
  SETSTATUSD(aop,bop,res)
 }
 
+void
 ldd()
 {
  Word ea,w;
@@ -1327,6 +1404,7 @@ ldd()
  *dreg=w;
 }
 
+void
 ldx()
 {
  Word ea,w;
@@ -1338,6 +1416,7 @@ ldx()
  if (iflag==0) xreg=w; else yreg=w;
 }
 
+void
 ldu()
 {
  Word ea,w;
@@ -1349,6 +1428,7 @@ ldu()
  if (iflag==0) ureg=w; else sreg=w;
 }
 
+void
 std()
 {
  Word ea,w;
@@ -1359,6 +1439,7 @@ std()
  SETWORD(ea,w)
 }
 
+void
 stx()
 {
  Word ea,w;
@@ -1370,6 +1451,7 @@ stx()
  SETWORD(ea,w)
 }
 
+void
 stu()
 {
  Word ea,w;
@@ -1381,7 +1463,7 @@ stu()
  SETWORD(ea,w)
 }
 
-int (*instrtable[])() = {
+void (*instrtable[])() = {
  neg , ill , ill , com , lsr , ill , ror , asr ,
  asl , rol , dec , ill , inc , tst , jmp , clr ,
  flag0 , flag1 , nop , sync_inst , ill , ill , lbra , lbsr ,
@@ -1416,6 +1498,7 @@ sub , cmp , sbc , addd , and , bit , ld , st ,
 eor , adc ,  or , add , ldd , std , ldu , stu ,
 };
 
+void
 read_image(char* name)
 {
  FILE *image;
@@ -1425,6 +1508,7 @@ read_image(char* name)
  }
 }
 
+void
 dump()
 {
  FILE *image;
@@ -1469,7 +1553,7 @@ void trace()
    int i;
 
   if (
-   1 ||                                         /* no trace filtering ... */
+   1 || (                                       /* no trace filtering ... */
    !(ureg > 0x09c0 && ureg < 0x09f3) && (       /* CMOVE ausblenden! */
     pcreg_prev == 0x01de || /* DOLST */
     pcreg_prev == 0x037a || /* FDOVAR */
@@ -1482,7 +1566,7 @@ void trace()
     pcreg_prev >= 0x01de && pcreg_prev < 0x0300 ||
    */
     0
-    )
+    ))
    )
   {
    fprintf(stderr,"%04x ",pcreg_prev);
@@ -1514,6 +1598,7 @@ void trace()
 
 static char optstring[]="d";
 
+int
 main(int argc,char *argv[])
 {
  char c;
@@ -1579,6 +1664,7 @@ main(int argc,char *argv[])
  pcreg_prev = pcreg;
 
  } /* for */
+ return 0;
 }
 
 

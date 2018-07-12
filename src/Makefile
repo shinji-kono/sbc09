@@ -9,7 +9,8 @@
 # license: GNU General Public License version 2, see LICENSE for more details.
 #
 
-CFLAGS=-O3 -fomit-frame-pointer -DTERM_CONTROL
+# CFLAGS=-O3 -fomit-frame-pointer -DTERM_CONTROL
+CFLAGS=-g  -DTERM_CONTROL
 
 V09FLAGS= -DUSE_TERMIOS #-DBIG_ENDIAN
 
@@ -19,7 +20,7 @@ SIM_BIN=v09s v09st
 APPS=mon2.s
 
 # will be installed to ".."
-BIN=a09 v09 $(SIM_BIN) v09.rom
+BIN=a09 v09 v09c d09 $(SIM_BIN) v09.rom 
 
 TARGETS=$(BIN) $(APPS)
 
@@ -29,19 +30,36 @@ all: $(TARGETS)
 
 # ------------------------------------
 
-a09: a09.c
+a09 : a09.o os9crc.o
+	$(CC)  $(CFLAGS) $(V09FLAGS) a09.o os9crc.o -o $@
 
-v09: v09.o engine.o io.o
-	$(CC) -o v09 $(CFLAGS) v09.o engine.o io.o
+v09: v09.o engine.o io.o d09.o trace.o
+	$(CC) -o v09 $(CFLAGS) v09.o engine.o io.o d09.o trace.o
 
-v09.o: v09.c v09.h
-	$(CC) -c $(CFLAGS) $(V09FLAGS) v09.c
+# with Coco MMU 
+v09c: v09.c engine.c io.c d09.o trace.o
+	$(CC) -o v09c $(CFLAGS) $(V09FLAGS) -DIOPAGE=0xff80 -DUSE_MMU=1 v09.c engine.c io.c d09.o trace.c
 
-engine.o: engine.c v09.h
-	$(CC) -c $(CFLAGS) $(V09FLAGS) engine.c
+a09.o : a09.c 
+	$(CC) -c $(CFLAGS) $(V09FLAGS) $< 
 
-io.o: io.c v09.h
-	$(CC) -c $(CFLAGS) $(V09FLAGS) io.c
+v09.o: v09.c 
+	$(CC) -c $(CFLAGS) $(V09FLAGS) $<
+
+d09 : d09.c
+	$(CC) -Wno-format-security $(CFLAGS) $(V09FLAGS) $< -o $@
+
+d09.o : d09.c
+	$(CC) -c -DNO_MAIN -Wno-format-security $(CFLAGS) $(V09FLAGS) $< 
+
+engine.o: engine.c 
+	$(CC) -c $(CFLAGS) $(V09FLAGS) $<
+
+io.o: io.c 
+	$(CC) -c $(CFLAGS) $(V09FLAGS) $<
+
+trace.o: trace.c v09.h
+	$(CC) -c $(CFLAGS) $(V09FLAGS) $< 
 
 v09.rom: makerom monitor.s 
 	./makerom <monitor.s
@@ -58,6 +76,7 @@ makerom: makerom.c
 # ------------------------------------
 
 v09s: v09s.c
+	$(CC) $(CFLAGS) -o $@ $<
 
 v09st: v09s.c
 	$(CC) $(CFLAGS) -DTRACE -o $@ $<
@@ -76,8 +95,16 @@ cleanall: clean
 	rm -f $(TARGETS) $(OTHER)
 	(cd ..; rm -f $(BIN) )
 
+realclean: cleanall
+
 clean:
-	rm -f core *.BAK *.o *.lst
+	rm -rf core *.BAK *.o *.lst *.dSYM
 
 # ------------------------------------
 
+# DO NOT DELETE
+
+engine.o: v09.h
+io.o: v09.h
+trace.o: v09.h
+v09.o: v09.h

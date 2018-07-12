@@ -5,11 +5,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <strings.h>
 
 static int sum,charindex;
 unsigned char mem[0x8000];
 char linebuf[130];
 
+void
 hexerr()
 {
  fprintf(stderr,"Illegal character in hex number\n");
@@ -21,7 +23,7 @@ int gethex()
  int c;
  c=linebuf[charindex++];
  if(c<'0')hexerr();
- if(c>'9') if(c<'A')hexerr();else c-=7;
+ if(c>'9') { if(c<'A')hexerr();else c-=7; }
  c-='0';
  return c;
 }
@@ -35,6 +37,7 @@ int getbyte()
  return b;
 }
 
+int
 main()
 {
  FILE *romfile;

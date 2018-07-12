@@ -18,24 +18,36 @@ engine Byte d_reg[2];
 extern Word *dreg;
 extern Byte *breg,*areg;
 
+engine long memsize;
+engine long rommemsize;
+engine Byte * mmu;
 /* 6809 memory space */
+#ifdef USE_MMU
+engine Byte * phymem;
+engine Byte * mem;
+#else
 #ifdef MSDOS
  engine Byte * mem;
 #else
  engine Byte mem[65536];
 #endif
+#endif
 
 engine volatile int tracing,attention,escape,irq;
 engine Word tracehi,tracelo;
 engine char escchar;
+engine int timer;
+engine FILE *tracefile;
 
+#ifndef IOPAGE
 #define IOPAGE 0xe000
+#endif 
 
 void interpr(void);
 void do_exit(void);
 int do_input(int);
 void set_term(char);
-void do_trace(void);
+void do_trace(FILE *);
 void do_output(int,int);
 void do_escape(void);
 
