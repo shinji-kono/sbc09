@@ -20,6 +20,22 @@ This distribution includes
  1. The 6809 single board system as a stand alone environment built as v09 
  1. with CoCo like MMU v09c 
 
+How to make
+---------
+
+    get os9 src from os9 archive (cocoos9.zip)
+
+    % ln -s $(SOMEWHERE)/CoCoOS9   .
+    % make
+
+How to run
+---------
+
+add os9 disk image using -0 or -1 option ( ex. https://github.com/sorenroug/osnine-java.git )
+
+    src/v09 -rom src/os9/os9d.rom -0 OS9.dsk -1 WORK.dsk 0
+
+    src/v09c -rom src/os9/os9lv2.rom -0 OS9.dsk -1 WORK.dsk 
 
 
 Structure

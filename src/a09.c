@@ -60,6 +60,10 @@
 #define LINELEN 128
 
 static int debug=0;
+static struct incl {
+    char *name;
+    struct incl *next;
+} *incls = 0;
 
 struct oprecord{char * name;
                 unsigned char cat;
@@ -1477,6 +1481,17 @@ getoptions(int c,char*v[])
      } else if(strcmp(v[i],"-l")==0) {
        listname=v[i+1];
        i+=2;
+     } else if(strcmp(v[i],"-I")==0) {
+       struct incl *j = (struct incl *)malloc(sizeof(struct incl));
+       j->name = v[i+1];
+       j->next  = 0;
+       if (!incls) incls = j;
+       else { 
+           struct incl *k=incls ;
+           for(; k->next ; k = k->next ) ;
+           k->next = j;
+       }
+       i+=2;
      } else if(*v[i]=='-') {
          usage(v[0]);
      } else {
@@ -1528,15 +1543,23 @@ processfile(char *name)
    }
    if (i>0) {
        char *next = strconcat(oldname,i+1,name);
-       if((srcfile=fopen(next,"r"))==0) {
-          fprintf(stderr,"Cannot open source file %s\n",next);
-          exit(4);
+       if((srcfile=fopen(next,"r"))!=0) {
+          curname = next;
        }
-       curname = next;
-   } else {
+   } 
+   if (!srcfile) {
+     for( struct incl *d = incls; d ; d = d->next) {
+          char *next = strconcat(d->name,0,name);
+          if((srcfile=fopen(next,"r"))!=0) {
+             curname = next;
+             break;
+          }
+     }
+   }
+ }
+ if (!srcfile) {
      fprintf(stderr,"Cannot open source file %s\n",name);
      exit(4);
-   }
  }
  while(!terminate&&fgets(inpline,128,srcfile)) {
    expandline();

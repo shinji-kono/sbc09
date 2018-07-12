@@ -5,14 +5,15 @@ SRCCMD=$(OS9SRC)/level1/CMDS
 
 A09 = ../../a09 -I $(OS9SRC)/defs/
 
-all : ioman pdisk init os9p1 os9p2 pipe pipeman piper rbf scf term pty d0 d1 clock shell dir mdir sysgo
+all : pdisk init os9p2 pipe pipeman piper rbf scf term pty d0 d1 clock shell dir mdir 
 
 clean : 
-	rm -f ioman pdisk init os9p1 os9p2 pipe pipeman piper rbf scf term pty d0 d1 clock boot shell dir mdir sysgo *.lst
+	rm -f pdisk init os9p2 pipe pipeman piper rbf scf term pty d0 d1 clock boot shell dir mdir *.lst
 
 LST = -l $@.lst
 
 # our own module for sbc09
+# CoCoOS9's level1/os9p1.asm has wrong vector value, use our own
 
 pdisk : 
 	$(A09) pdisk.asm -o pdisk $(LST) $(LST)
@@ -21,8 +22,8 @@ pdisk :
 # boot : boot.asm
 # 	$(A09) boot.asm -o boot $(LST)
 
-sysgo : sysgo.asm
-	$(A09) sysgo.asm -o sysgo $(LST)
+#sysgo : sysgo.asm
+#	$(A09) sysgo.asm -o sysgo $(LST)
 
 init : init.asm
 	$(A09) init.asm -o init $(LST)
@@ -53,14 +54,14 @@ mdir :
 dir :
 	$(A09) ${SRCCMD}/dir.asm -o dir $(LST)
 
-os9p1 :
-	$(A09) ${SRCDIR}/os9.asm -o os9p1 $(LST)
+# os9p1 :
+# 	$(A09) ${SRCDIR}/os9.asm -o os9p1 $(LST)
 
 os9p2 :
 	$(A09) ${SRCDIR}/os9p2.asm -o os9p2 $(LST)
 
-ioman :
-	$(A09) ${SRCDIR}/ioman.asm -o ioman $(LST)
+#ioman :
+#	$(A09) ${SRCDIR}/ioman.asm -o ioman $(LST)
 
 pipe :
 	$(A09) ${SRCDIR}/pipe.asm -o pipe $(LST)

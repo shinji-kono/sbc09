@@ -192,6 +192,7 @@ main(int ac, char *av[])
  } else {
      pos = start;
  }
+ int ofs = 0;
  struct os9module *os9p1 = 0;
  for(struct os9module *cur = root.next; cur ; cur = cur->next ) {
     if ( level==2 && cur->ioflag ==1) continue; 
@@ -199,7 +200,11 @@ main(int ac, char *av[])
     if ( cur->next == 0 ) {
         os9p1 = cur;
         if ( level==1 ) { 
-           for(; pos < 0xf800 ; pos++) {   // os9p1 begins at 0xf800
+           if (os9p1->size > 0x07f0) {
+               ofs = (os9p1->size+0xf)&0xfff0;
+               ofs -= 0x07f0;
+           }
+           for(; pos < 0xf800-ofs ; pos++) {   // os9p1 begins at 0xf800
               fputc(0xff,romfile);
            }
         } else {
@@ -232,13 +237,13 @@ main(int ac, char *av[])
      vectable  = 0x10000 - 2*7;
      for( ; pos<vectable; pos++) fputc(0xff,romfile);
      printf("vectbl %x\n",pos);
-     fputword(0xF82d,romfile);
-     fputword(0xF831,romfile);
-     fputword(0xF835,romfile);
-     fputword(0xF839,romfile);
-     fputword(0xF83d,romfile);
-     fputword(0xF841,romfile);
-     fputword(0xF876,romfile);
+     fputword(0xF82d-ofs,romfile);
+     fputword(0xF831-ofs,romfile);
+     fputword(0xF835-ofs,romfile);
+     fputword(0xF839-ofs,romfile);
+     fputword(0xF83d-ofs,romfile);
+     fputword(0xF841-ofs,romfile);
+     fputword(0xF876-ofs,romfile);
  } else {
      char vector[] = "level2/vector";
      FILE *fp = fopen(vector,"rb");
