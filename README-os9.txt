@@ -68,6 +68,7 @@ src/
 v09/v09c feature
 
     Usage: v09 [-rom rom-image] [-t tracefile [-tl addr] [-nt][-th addr] ] [-e escchar] 
+               [-0 diskImage0] [-1 diskImage1]
 
 v09 tracing command  ( may be very slow )
 

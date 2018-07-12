@@ -1,9 +1,9 @@
 
-A09 = ../../a09
-
-OS9DIR=../../CoCoOS9
+OS9DIR=../../../CoCoOS9
 SRCDIR=$(OS9DIR)/level2v3/MODULES
 SRCCMD=$(OS9DIR)/level2v3/CMDS
+
+A09 = ../../a09 -I $(OS9DIR)/defs/
 
 all : ioman pdisk init os9p1 os9p2 os9p3_perr os9p4_regdump pipe pipeman pipeman_named piper rbf scf term pty d0 d1 clock vector boot shell dir mdir sysgo
 
@@ -39,7 +39,7 @@ clock :  clock.asm
 	$(A09) clock.asm -o clock $(LST)
 
 pty :
-	$(A09) ../modules/pty.asm -o pty $(LST)
+	$(A09) ../level1/pty.asm -o pty $(LST)
 
 shell :
 	$(A09) ${SRCCMD}/shell_21.asm -o shell $(LST)

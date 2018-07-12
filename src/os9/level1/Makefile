@@ -1,14 +1,14 @@
 
-A09 = ../../a09
-
 OS9SRC=../../../CoCoOS9
 SRCDIR=$(OS9SRC)/level1/MODULES
 SRCCMD=$(OS9SRC)/level1/CMDS
 
-all : ioman pdisk init os9p1 os9p2 pipe pipeman pipeman_named piper rbf scf term pty d0 d1 clock vector shell dir mdir sysgo
+A09 = ../../a09 -I $(OS9SRC)/defs/
+
+all : ioman pdisk init os9p1 os9p2 pipe pipeman piper rbf scf term pty d0 d1 clock shell dir mdir sysgo
 
 clean : 
-	rm -f ioman pdisk init os9p1 os9p2 pipe pipeman pipeman_named piper rbf scf term pty d0 d1 clock vector boot shell dir mdir sysgo *.lst
+	rm -f ioman pdisk init os9p1 os9p2 pipe pipeman piper rbf scf term pty d0 d1 clock boot shell dir mdir sysgo *.lst
 
 LST = -l $@.lst
 
@@ -27,9 +27,6 @@ sysgo : sysgo.asm
 init : init.asm
 	$(A09) init.asm -o init $(LST)
 
-vector : vector.asm
-	$(A09) vector.asm -o vector $(LST)
-
 pty : pty.asm
 	$(A09) pty.asm -o pty $(LST)
 
@@ -47,7 +44,7 @@ clock :  clock.asm
 
 # os9 level1 moduels
 
-shell :
+shell : ${SRCCMD}/shell 
 	cp ${SRCCMD}/shell .
 
 mdir :
@@ -71,8 +68,6 @@ pipe :
 pipeman :
 	$(A09) ${SRCDIR}/pipeman.asm -o pipeman $(LST)
 
-pipeman_named :
-	$(A09) ${SRCDIR}/pipeman_named.asm -o pipeman_named $(LST)
 
 piper :
 	$(A09) ${SRCDIR}/piper.asm -o piper $(LST)
