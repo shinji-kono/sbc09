@@ -23,6 +23,9 @@ atrv     set   ReEnt+rev
 rev      set   $01
 edition  set   $06
 TimerPort set  $e030
+TkPerSec set   60
+TkPerTS  equ   TkPerSec/10 ticks per time slice
+
 
          mod   eom,name,tylg,atrv,ClkEnt,size
 
@@ -38,22 +41,33 @@ SysTbl   fcb   F$Time
 
 ClockIRQ clra
          tfr   a,dp
-L00AE    jsr   [>D.Poll]
-         bcc   L00AE
-L00B4    jmp   [>D.AltIRQ]
-         rts
-
-ClkEnt   equ   *
-         pshs  cc
-         orcc  #FIRQMask+IRQMask       mask ints
-         leax  >ClockIRQ,pcr
-         stx   <D.IRQ
-* install system calls
-         leay  >SysTbl,pcr
-         os9   F$SSvc
          ldx   #TimerPort
+         lda   ,x
+         bita  #$10
+         beq   L00B4
          ldb   #$8f     start timer
          stb   ,x
+L00B4    
+         jmp   [>D.SvcIRQ]
+
+ClkEnt   equ   *
+         ldd   #59*256+$01 last second and last tick
+         std   <D.Sec     will prompt RTC read at next time slice
+*         ldb   #TkPerSec
+*         stb   <D.TSec    set ticks per second
+         ldb   #TkPerTS   get ticks per time slice
+         stb   <D.TSlice  set ticks per time slice
+         stb   <D.Slice   set first time slice
+         pshs  cc
+         orcc  #FIRQMask+IRQMask       mask ints
+         leax  <ClockIRQ,pcr
+         stx   <D.IRQ
+* install system calls
+         leay  <SysTbl,pcr
+         os9   F$SSvc
+         ldx   #TimerPort
+*         ldb   #$8f     start timer
+*         stb   ,x
          puls  pc,cc
 
 * F$Time system call code
@@ -68,6 +82,7 @@ FTime    ldx   R$X,u
          ldd   5,y
          std   4,x
          clrb
+
          rts
 
          emod

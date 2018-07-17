@@ -1,8 +1,7 @@
 /* 6808 Simulator V092
-  created 1993,1994 by L.C. Benschop.  copyleft (c) 1994-2014
-by the sbc09 team, see AUTHORS for more details.  license: 
-GNU General Public License version 2, see LICENSE for more 
-details. 
+ created 1993,1994 by L.C. Benschop. copyleft (c) 1994-2014
+by the sbc09 team, see AUTHORS for more details. license: GNU
+General Public License version 2, see LICENSE for more details.
 
    This program simulates a 6809 processor.
 
@@ -49,7 +48,9 @@ details.
  *   IOPAGE ~ IOPAGE+0x7f
  *       for OS9 level2
  *       IOPAGE 0xff80 means ioport beging 0xff80 but IOPAGE itself starts 0xff00
- *       0xfe00-0xff7f, 0xffe0-0xffff can be used as ROM in fixed area
+ *       0xfe00-0xff7f, 0xffe0-0xffff can be used as RAM in fixed area in level2
+ *       and these are ROM in level1
+ *       
  *
  *   IOPAGE + 0x00   ACIA  control
  *   IOPAGE + 0x01   ACIA  data
@@ -66,6 +67,7 @@ details.
  *            tr=1  mmu=IOPAGE+0xa8
  *
  *   IOPAGE + 0x30   Timer control       0x8f start timer/0x80 stop timer/0x04 update date
+ *                                       read 0x10 bit menas timer
  *   IOPAGE + 0x31-  YY/MM/DD/HH/MM/SS
  *
  *   IOPAGE + 0x40   Disk control        0x81 read/0x55 write   0 ... ok / 0xff .. error
@@ -94,6 +96,7 @@ int xidx;
 int acknak;
 int rcvdnak;
 int blocknum;
+int timer_irq = 2 ; // 2 = FIRQ, 1 = IRQ
 
 FILE *infile;
 FILE *xfile;
@@ -194,15 +197,19 @@ int do_input(int a) {
         if (a == 0+(IOPAGE&0x1ff)) {
                 if (f == EOF)
                         f = char_input();
-                if (f != EOF)
+                if (f != EOF) {
                         c = f;
-                return 2 + (f != EOF);
+                        mem[(IOPAGE&0xfe00) + a] = c;
+                }
+                mem[(IOPAGE&0xfe00) + a] = c = 2 + (f != EOF);
+                return c;
         } else if (a == 1+(IOPAGE&0x1ff)) { /*data port*/
                 if (f == EOF)
                         f = char_input();
                 if (f != EOF) {
                         c = f;
                         f = EOF;
+                        mem[(IOPAGE&0xfe00) + a] = c;
                 }
                 return c;
         }
@@ -263,6 +270,10 @@ void do_output(int a, int c) {
              do_timer(a,c);
         } else if (a >= 0x10+(IOPAGE&0x1ff)) { /* mmu */
              do_mmu(a,c);
+#ifdef USE_MMU
+        } else { /* fixed ram */
+             mem[ a + 0xfe00 ] = c;
+#endif
         }
 }
 
@@ -274,11 +285,14 @@ void do_timer(int a, int c) {
         timercontrol.it_interval.tv_usec = 20000;
         timercontrol.it_value.tv_sec = 0;
         timercontrol.it_value.tv_usec = 20000;
+        timer_irq = 1;
         setitimer(ITIMER_REAL, &timercontrol, NULL);
+        mem[(IOPAGE&0xfe00)+a]=c;
    } else if (a==0x30+(IOPAGE&0x1ff) && c==0x80) {
         timercontrol.it_interval.tv_sec = 0;
         timercontrol.it_interval.tv_usec = 0;
         setitimer(ITIMER_REAL, &timercontrol, NULL);
+        mem[(IOPAGE&0xfe00)+a]=c;
    } else if (a==0x30+(IOPAGE&0x1ff) && c==0x04) {
       time_t tm = time(0);
       struct tm *t = localtime(&tm);
@@ -338,7 +352,8 @@ void do_mmu(int a, int c)
 void timehandler(int sig) {
         attention = 1;
         irq = 2;
-        signal(SIGALRM, timehandler);
+        mem[(IOPAGE&0xfe00)+0x30] |= 0x10  ;
+        // signal(SIGALRM, timehandler);
 }
 
 void handler(int sig) {

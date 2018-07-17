@@ -108,9 +108,6 @@ ShellPrm equ   *
 CRtn     fcb   C$CR
 ShellPL  equ   *-ShellPrm
 
-mdirprm  fcc   "-e"
-         fcb   C$CR
-
 * Default time packet
 DefTime  
 * dtb
@@ -182,7 +179,7 @@ start    leax  >IcptRtn,pcr
 
 * Show rest of banner
 SignOn
-         puls  u
+         ldu   ,s
          leax  >Banner,pcr
          ldy   #BannLen
          lda   #$01                    standard output
@@ -192,7 +189,25 @@ SignOn
 *         leax  >DefTime,pcr
 *         os9   F$STime                 set time to default
 
-         IFEQ  ROM
+        IFEQ 1 
+          leax  >MDIR,pcr
+          leau  >mdirprm,pcr
+          ldd   #$0100
+          ldy   #$0003
+          os9   F$Fork
+          bcs   mdirend                   AutoEx failed..
+          os9   F$Wait
+          ldu   ,s
+          bra   mdirend
+MDIR      fcc  "mdir"
+          fcb   $0d
+mdirprm   fcc   "-e"
+          fcb   C$CR
+mdirend
+         ldu   ,s
+        ENDC
+
+*         IFEQ  ROM
 * Change EXEC and DATA dirs
          leax  >ExecDir,pcr
          lda   #EXEC.
@@ -202,13 +217,12 @@ SignOn
          lda   #READ.
          os9   I$ChgDir                change data dir.
          bcs   L0125
-         leax  >HDDev,pcr
-         lda   #EXEC.
-         os9   I$ChgDir                change exec. dir to HD
-       ENDC
+*         leax  >HDDev,pcr
+*         lda   #EXEC.
+*         os9   I$ChgDir                change exec. dir to HD
+*       ENDC
 
 L0125    equ   *
-         pshs  u,y
        IFEQ  atari+corsham
        IFEQ  Level-1
 * Setup BASIC code (CoCo port only)
@@ -276,20 +290,8 @@ L0151    lda   b,y
 *         bcs   L0186                   AutoEx failed..
 *         os9   F$Wait
 
-        IFEQ Level-1
-          leax  >MDIR,pcr
-          leau  >mdirprm,pcr
-          ldd   #$0100
-          ldy   #$0003
-          os9   F$Fork
-          bcs   L0186                   AutoEx failed..
-          os9   F$Wait
-          bra   L0186
-MDIR      fcs  "mdir"
-          fcb   $0d
-        ENDC
 L0186    equ   *
-         puls  u,y
+         ldu    ,s
 FrkShell leax  >ShellPrm,pcr
          leay  ,u
          ldb   #ShellPL

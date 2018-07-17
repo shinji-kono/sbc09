@@ -92,8 +92,8 @@ install:
 # ------------------------------------
 
 cleanall: clean
-	rm -f $(TARGETS) $(OTHER)
-	(cd ..; rm -f $(BIN) )
+	rm -rf $(TARGETS) $(OTHER)
+	(cd ..; rm -rf $(BIN) )
 
 realclean: cleanall
 

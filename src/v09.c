@@ -90,16 +90,17 @@ read_image()
  mmu = &mem[0xffa0];
  prog = (char*)mem;
  if (romstart==0x8000) {
-     romstart = memsize - 0x10000 + 0xed00 ;
+     // romstart = memsize - 0x10000 + 0xed00 ;
+     romstart = memsize ;  // full 512kb mem
  }
  fread(mem+ 0xe000,len,1,image);
+ mem[0xffa7] = 0x3f;
 #else
  if (romstart==0x8000) {
      romstart = 0x10000 - len; 
  }
  fread(mem+(romstart&0xffff),len,1,image);
 #endif
- mem[0xffa7] = 0x3f;
  fclose(image);
 }
 

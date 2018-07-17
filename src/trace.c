@@ -58,6 +58,7 @@ typedef struct bp {
   int address;       // physical address
   int laddr;
   int count;
+  int watch;         // watch point
   struct bp *next;
 } BP, *BPTR;
 
@@ -67,7 +68,23 @@ int trskip = 0;
 int stkskip = 0;
 
 int getarg(char *buf, char** next) {
-        return strtol(buf,(char**)next,0);
+     int value = strtol(buf,next,0);
+     for(;next;) {
+         if  ( **next == '+' ) {
+            value += strtol(*next+1,next,0);
+         } else if  ( **next == '*' ) {
+            value *= strtol(*next+1,next,0);
+         } else if  ( **next == '/' ) {
+            value /= strtol(*next+1,next,0);
+         } else if  ( **next == '-' ) {
+            value -= strtol(*next+1,next,0);
+         } else if  ( **next == '&' ) {
+            value &= strtol(*next+1,next,0);
+         } else if  ( **next == '|' ) {
+            value |= strtol(*next+1,next,0);
+         } else break;
+     }
+     return value;
 }
 
 void printhelp(void)
@@ -105,12 +122,18 @@ int nexti(void);
 void do_escape(void) {
         char s[80];
         int adr,page;
+        int ppc = paddr(pcreg,mmu);
         if (bpskip) { // skip unbreak instruction
             bpskip--;
-            int ppc = paddr(pcreg,mmu);
             BPTR *prev = &breakpoint;
             for(BPTR b = breakpoint; b ; prev=&b->next, b=b->next ) {
-                if (ppc==b->address /* || pcreg==b->laddr */) {
+#ifdef USE_MMU
+                int watch = phymem[b->address];
+#else
+                int watch = mem[b->address];
+#endif
+                if (ppc==b->address || b->watch != watch  ) {
+                    b->watch = watch;
                     if (b->count==-1) {  // temporaly break point
                         BPTR next = b->next;
                         free(b);
@@ -126,18 +149,26 @@ void do_escape(void) {
             return;
         }
         if (stkskip) { // skip until return
+#ifdef USE_MMU
+           if (phymem[ppc]==0x3b||(phymem[ppc]==0x10&&phymem[ppc+1]==0x3f)) 
+               goto restart0;
+#else
+           if (mem[ppc]==0x3b||(mem[ppc]==0x10&&mem[ppc+1]==0x3f)) 
+               goto restart0;
+#endif
            if (sreg < stkskip ) return;
         }
 restart0:
         stkskip = 0;
         restore_term();
 #ifdef USE_MMU
-        Byte *phyadr = mem0(phymem,pcreg,mmu);
+        Byte *phyadr = phymem + ppc;
         prog = (char*)phyadr - pcreg;
 #endif
         do_trace(stdout);
         if (trskip>1) { // show trace and step
             trskip--;
+            int watch;         // watch point
             set_term(escchar);
             return; 
         }
@@ -181,9 +212,9 @@ restart:
         case 'B':   // break point list
                 for(BPTR bp = breakpoint; bp ; bp = bp->next) {
 #ifdef USE_MMU
-                    printf("%x %x %d\n", bp->laddr, bp->address, bp->count);
+                    printf("0x%x p=0x%x c=%d w=0x%x\n", bp->laddr, bp->address, bp->count, bp->watch);
 #else
-                    printf("%x %d\n", bp->address, bp->count);
+                    printf("0x%x c=%d w=0x%x\n", bp->address, bp->count,bp->watch);
 #endif
                 }
                 goto restart;
@@ -360,6 +391,11 @@ void setbreak(int adr, int count) {
   bp->count = count;
   bp->laddr = adr;
   bp->address = paddr(adr,mmu);
+#ifdef USE_MMU
+  bp->watch = *mem0(phymem,adr,mmu);
+#else
+  bp->watch = mem[adr];
+#endif
 }
 
 int nexti(void) {

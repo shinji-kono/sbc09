@@ -30,6 +30,9 @@ name     fcs   /Boot/
          fcb   edition
 
 start    
+         lbra    entry
+         lbra    btdebug
+entry
          ldy    #$40    extended rom page no. 
          clra
          clrb
@@ -54,29 +57,37 @@ ok
      **  u points the memory
          stu    2,s      return as x
          ldd    ,s
+         std    6,s
          ldx    #0
      ** copy to Bt BtRAM
-pagel    tfr    d,y
+pagel    ldd    #$2000
+         cmpd   6,s
+         blo    lo
+         ldd    6,s
+lo       tfr    d,y
          lda    5,s
          sta    $ffa0
          tfr    y,d
 loop     ldy    ,x++
          sty    ,u++
-         subb   #2
-         sbca   #0
-         cmpb   #0       $100 transfered?
-         bne    loop
-         bita   #$1f
-         bne    loop
-         tsta
-         beq    last     all transfered
+         subd   #2
+         bne    loop    
          clr    $ffa0    back to system map
+         ldd    6,s
+         subd   #$2000
+         bmi    last     all transfered
+         std    6,s
      ** 2k boundary
          inc    5,s
          ldx    #0
          bra    pagel
 last     clr    $ffa0
          puls   d,x,y,u,pc
+
+      ** put lbsr btdebug on <$5e
+btdebug  anda   #$7f
+         sta    $ff81
+         rts
 
          emod
 eom      equ   *

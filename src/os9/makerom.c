@@ -47,12 +47,15 @@ char * outfile ;
 
 typedef struct os9module {
    int size;
+   int entry;
    int location;
    int ioflag;
    unsigned char *mod;
    char *name;
    struct os9module *next;
 } *MPTR ; 
+
+unsigned short vec[8];
 
 struct os9module *
 readOS9module(char *filename) 
@@ -72,6 +75,7 @@ readOS9module(char *filename)
   m->mod = (unsigned char*)m + sizeof(struct os9module);
   fread(m->mod , size, 1, fp);
   m->name = (char*) (m->mod + (m->mod[4]*256 + m->mod[5]) );
+  m->entry = m->mod[9]*256 + m->mod[10] ;
   fclose(fp);
   return m;
 }
@@ -85,11 +89,15 @@ fputword(unsigned short x, FILE *fp)
 
 void printOs9Str(char *p)
 {
+   char *q = p;
    while((*p & 0x80)==0) {
       putchar(*p);
       p++;
    }
    putchar(*p & 0x7f);
+   while(p<q+8) {
+       putchar(' '); p++;
+   }
 }
 
 unsigned short
@@ -111,6 +119,19 @@ void rewrite_vector(MPTR m,int size, unsigned char *adr,int count)
     }
 }
 
+int search_vector(MPTR m) {
+    unsigned char v[] = { 0x6E, 0x9F, 0x00, 0x2C, 0x6E};
+    for( unsigned char *p = m->mod ; p < m->mod + m->size; p++ ) {
+        int i=0;
+        for(; i< sizeof(v); i++) {
+            if (p[i]!=v[i]) break;
+        }
+        if (i==sizeof(v)) 
+            return p - m->mod;
+    }
+    return 0;
+}
+
 // calcurate position from the botton
 // avoid v09 IO map on 0xe000-0xe800
 // os9p1 have to be last and at 0xf800
@@ -119,10 +140,20 @@ int findLocation(MPTR m, int loc) {
    int top = findLocation(m->next, loc) - m->size;
    if (m->next==0) {
        if (level == 1)
-          top = 0xf800;  // OS9p1
+          if (m->size > 0xff80-0xf800 ) {
+              top = 0x10000-(m->size+0x80);
+          } else {
+              top = 0xf800;  // OS9p1
+          }
        else {
+#if 0
+          // old level2 kernel has vector at the bottom
           top = 0x10000-(m->size+0x80);
           rewrite_vector(m,m->size,m->mod+getword(m->mod+2),7);
+#else
+          top = 0xf000;  // level2 OS9p1 starts here
+          // and theses area are RAM /REGISTER STACK/
+#endif
        }
    }
    if (level==1 && !(( top+m->size < IOBASE )  || ( IOBASE+IOSIZE < top)) ) {
@@ -208,16 +239,22 @@ main(int ac, char *av[])
               fputc(0xff,romfile);
            }
         } else {
+#if 0
            int pend = 0x10000-( cur->size +0x80);
            for(; pos < pend ; pos++) {      // os9p1 ends 0xff7f
+              fputc(0xff,romfile);
+           }
+#endif
+           for(; pos < 0xf000 ; pos++) {   // level2 os9p1 start from 0xf000
               fputc(0xff,romfile);
            }
         }
     }
     printf("mod ");
     printOs9Str(cur->name);
+    cur->location = pos;
     fwrite(cur->mod, cur->size, 1, romfile);
-    printf(" \t: 0x%x - 0x%x size 0x%x\n",pos, pos + cur->size-1,cur->size);
+    printf(" \t: 0x%x - 0x%x size 0x%04x entry 0x%x\n",pos, pos + cur->size-1,cur->size,cur->entry+cur->location);
 #ifdef DEBUG
     printf(" \t: 0x%x \n",cur->location);
     printf(" \t: 0x%x - 0x%x : 0x%lx \n",pos, pos + cur->size, ftell(romfile)+start);
@@ -237,13 +274,29 @@ main(int ac, char *av[])
      vectable  = 0x10000 - 2*7;
      for( ; pos<vectable; pos++) fputc(0xff,romfile);
      printf("vectbl %x\n",pos);
-     fputword(0xF82d-ofs,romfile);
-     fputword(0xF831-ofs,romfile);
-     fputword(0xF835-ofs,romfile);
-     fputword(0xF839-ofs,romfile);
-     fputword(0xF83d-ofs,romfile);
-     fputword(0xF841-ofs,romfile);
-     fputword(0xF876-ofs,romfile);
+     if (1) {
+         int vecofs = search_vector(os9p1);
+         if (vecofs==0) {
+            printf("can't find vector\n");
+         }
+         static int perm[] = {0,1,5,4,2,3};
+         for(int i=0;i<6;i++) {
+            fputword(os9p1->location +vecofs+perm[i]*4,romfile);
+         }  
+         int entry_ofs = (m->mod[9]<<8) + m->mod[10];  
+         fputword( os9p1->location + entry_ofs ,romfile);  
+         // printf("os9p1 location ofs %0x\n", os9p1->location);
+         // printf("vector ofs %0x\n", vecofs);
+         // printf("reset ofs %0x\n", entry_ofs);
+     } else {  
+        fputword(0xF82d-ofs,romfile);
+        fputword(0xF831-ofs,romfile);
+        fputword(0xF835-ofs,romfile);
+        fputword(0xF839-ofs,romfile);
+        fputword(0xF83d-ofs,romfile);
+        fputword(0xF841-ofs,romfile);
+        fputword(0xF876-ofs,romfile);
+     }
  } else {
      char vector[] = "level2/vector";
      FILE *fp = fopen(vector,"rb");
@@ -254,7 +307,6 @@ main(int ac, char *av[])
      for( ; pos<LV2START; pos++) fputc(0xff,romfile);
      printf("vectbl %x\n",pos);
      for( ; pos<0xfff0; pos++) fputc(fgetc(fp),romfile);
-
 #ifdef DEBUG
      printf("os9entry %x\n",os9p1->location);
 #endif 
@@ -282,10 +334,11 @@ main(int ac, char *av[])
      pos += 2;
      for(struct os9module *cur = root.next; cur ; cur = cur->next ) {
         if ( cur->ioflag ==0) continue; 
+        cur->location = pos;
         printf("mod ");
         printOs9Str(cur->name);
         fwrite(cur->mod, cur->size, 1, romfile);
-        printf(" \t: 0x%x - 0x%x size 0x%x\n",pos, pos + cur->size-1, cur->size);
+        printf(" \t: 0x%x - 0x%x size 0x%04x entry 0x%x\n",pos, pos + cur->size-1, cur->size, cur->entry+cur->location);
 #ifdef DEBUG
         printf(" \t: 0x%x \n",cur->location);
         printf(" \t: 0x%x - 0x%x : 0x%lx \n",pos, pos + cur->size, ftell(romfile)+start);

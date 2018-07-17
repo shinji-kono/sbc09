@@ -6,7 +6,14 @@ Level    equ   1
 OS9Vrsn  equ   2
 OS9Major equ   0
 OS9Minor equ   1
+CHECK_FOR_VALID_RAM equ 1      force ram check for non standard arch
 
-         use   ../../../CoCoOS9/defs/os9defs
-         use   ../../../CoCoOS9/defs/scfdefs
+NOS9VER   equ OS9Vrsn 
+NOS9MAJ   equ OS9Major
+NOS9MIN   equ OS9Minor
+
+
+         use   ../../../../nitros9-code/defs/os9.d
+         use   ../../../../nitros9-code/defs/scf.d
+         use   ../../../../nitros9-code/defs/rbf.d
 

@@ -15,9 +15,9 @@ rev      set   $01
          fcb   $0C
          fcb   $0C
          fdb   sysgo
-         fdb   null      system device (sysdev)
+         fdb   sysdev      system device (sysdev) (nitors9 requires this)
          fdb   systerm
-         fdb   null      bootstrap module (bootst)
+         fdb   bootst      bootstrap module (bootst)
 initnam  fcs   "Init"
 sysgo    fcs   "SysGo"
 sysdev   fcs   "/D0"

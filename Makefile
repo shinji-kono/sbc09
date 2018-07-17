@@ -14,3 +14,9 @@ all :
 	cd src ; make
 	cd src/os9 ; make os9d.rom
 	cd src/os9 ; make os9lv2.rom
+
+clean :
+	cd src ; make realclean
+	cd src/os9 ; make clean
+	cd src/os9/level1 ; make clean
+	cd src/os9/level2 ; make clean

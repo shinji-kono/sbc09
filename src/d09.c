@@ -1304,14 +1304,15 @@ char *suffix;
 				  code, postbyte, suffix, op->name, IndexRegister(postbyte));
 		break;
 	 case 0x0c :
-		offset = (prog[pc+2]+pc+3) & 0xFFFF;
+		offset = (*(char *)(prog+pc+2)+pc+3) & 0xFFFF;
 		s = "<";
 		fprintf(fp,"%0.2X %0.2X %0.2X    %s%s       %s$%0.2X,PCR",
 				  code, postbyte, prog[pc+2], suffix, op->name, s, offset+adoffset);
 		extrabytes = 1;
 		break;
 	 case 0x0d :
-		offset = (prog[pc+2] * 256 + prog[pc+3]+pc+4) & 0xFFFF;
+		offset = prog[pc+2] * 256 + prog[pc+3];
+		offset = ((offset>0x7fff? offset-0x10000 : offset )+pc+4) & 0xFFFF;
 		s = ">";
 		fprintf(fp,"%0.2X %0.2X %0.2X %0.2X %s%s       %s$%0.4X,PCR",
 				  code, postbyte, prog[pc+2], prog[pc+3], suffix, op->name, s, offset+adoffset);
@@ -1364,6 +1365,7 @@ char *suffix;
 		fprintf(fp,"%0.2X %0.2X %0.2X    %s%s       [%s$%0.2X,%s]",
 			code, postbyte, prog[pc+2], suffix, op->name, s, offset,
 		IndexRegister(postbyte));
+		extrabytes = 1;
 		break;
 	 case 0x19 :
 		offset = prog[pc+2] * 256 + prog[pc+3];
@@ -1376,6 +1378,7 @@ char *suffix;
 		fprintf(fp,"%0.2X %0.2X %0.2X %0.2X %s%s       %s$%0.4X,%s",
 			code, postbyte, prog[pc+2], prog[pc+3], suffix, op->name, s, offset,
 		IndexRegister(postbyte));
+		extrabytes = 2;
 		break;
 	 case 0x1a :
 		break;
@@ -1384,14 +1387,15 @@ char *suffix;
 				  code, postbyte, suffix, op->name, IndexRegister(postbyte));
 		break;
 	 case 0x1c :
-		offset = (prog[pc+2]+pc+3) & 0xFFFF;
+		offset = (*((char*)prog+pc+2)+pc+3) & 0xFFFF;
 		s = "<";
 		fprintf(fp,"%0.2X %0.2X %0.2X    %s%s       [%s$%0.2X,PCR]",
 				  code, postbyte, prog[pc+2], suffix, op->name, s, offset+adoffset);
 		extrabytes = 1;
 		break;
 	 case 0x1d :
-		offset = (prog[pc+2] * 256 + prog[pc+3]+pc+4) & 0xFFFF;
+		offset = prog[pc+2] * 256 + prog[pc+3];
+		offset = ((offset>0x7fff?offset-0x8001 : offset )+pc+4) & 0xFFFF;
 		s = ">";
 		fprintf(fp,"%0.2X %0.2X %0.2X %0.2X %s%s       [%s$%0.4X,PCR]",
 				  code, postbyte, prog[pc+2], prog[pc+3], suffix, op->name, s, offset+adoffset);

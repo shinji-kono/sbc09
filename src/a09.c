@@ -1,4 +1,4 @@
-/* A09, 6809 Assembler.
+/* A09, 6809 Assembler2
 
    created 1993,1994 by L.C. Benschop.
    copyleft (c) 1994-2014 by the sbc09 team, see AUTHORS for more details.
@@ -65,6 +65,32 @@ static struct incl {
     struct incl *next;
 } *incls = 0;
 
+static struct longer {
+    int gline;
+    int change;
+     struct longer *next;
+} *lglist = 0;
+
+void makelonger(int gl) {
+    for(struct longer *p=lglist;p;p=p->next) {
+        if (p->gline==gl) { // already fixed
+            p->change = 1;
+            return;
+        }
+    }
+    struct longer *p = (struct longer *)calloc(sizeof(struct longer *),1);
+    p->gline=gl;
+    p->next = lglist;
+    lglist = p;
+}
+
+int longer() {
+    for(struct longer *p=lglist;p;p=p->next) {
+        if (p->change == 0) return 1;
+    }
+    return 0;
+}
+
 struct oprecord{char * name;
                 unsigned char cat;
                 unsigned short code;};
@@ -125,8 +151,9 @@ struct oprecord optable[]={
   {"FCW",13,9},
   {"FDB",13,9},
   {"IF",13,10},
-  {"IFEQ",13,29},
-  {"IFGT",13,30},
+  {"IFEQ",13,30},
+  {"IFGT",13,29},
+  {"IFNDEF",13,33},
   {"IFNE",13,28},
   {"IFP1",13,21},
   {"INC",10,0x0c},{"INCA",0,0x4c},{"INCB",0,0x5c},
@@ -182,11 +209,12 @@ struct oprecord optable[]={
 struct symrecord{char name[MAXIDLEN+1];
                  char cat;
                  unsigned short value;
+                 struct symrecord *next;
                 };
 
 int symcounter=0;
-int os9 = 0;   // os9 flag
-int prevloc = 0;
+int os9 = 0;       // os9 flag
+int rmbmode = 0;   // in os9 work area 
 struct symrecord * prevlp = 0;
 
 /* expression categories...
@@ -236,10 +264,9 @@ struct oprecord * findop(char * nm)
  return optable+i;
 }
 
-struct symrecord * findsym(char * nm)
+struct symrecord * findsym(char * nm) {
 /* finds symbol table record; inserts if not found
    uses binary search, maintains sorted table */
-{
  int lo,hi,i,j,s;
  lo=0;hi=symcounter-1;
  s=1;i=0;
@@ -256,7 +283,12 @@ struct symrecord * findsym(char * nm)
    fprintf(stderr,"Sorry, no storage for symbols!!!");
    exit(4);
   }
-  for(j=symcounter;j>i;j--) symtable[j]=symtable[j-1];
+  for(j=symcounter;j>i;j--) {
+      struct symrecord *from = &symtable[j-1];
+      if (prevlp == from)  prevlp++; 
+      if (from->next && from->next - symtable > i) from->next ++;
+      symtable[j]=symtable[j-1];
+  }
   symcounter++;
   strcpy(symtable[i].name,nm);
   symtable[i].cat=13;
@@ -266,7 +298,7 @@ struct symrecord * findsym(char * nm)
 
 FILE *listfile,*objfile;
 char *listname,*objname,*srcname,*curname;
-int lineno;
+int lineno,glineno;
 
 void
 outsymtable()
@@ -305,7 +337,7 @@ char listing;          /* flag to indicate listing */
 char relocatable;      /* flag to indicate relocatable object. */
 char terminate;        /* flag to indicate termination. */
 char generating;       /* flag to indicate that we generate code */
-unsigned short loccounter,oldlc;  /* Location counter */
+unsigned short loccounter,oldlc,prevloc,rmbcounter;  /* Location counter */
 
 char inpline[128];     /* Current input line (not expanded)*/
 char srcline[128];     /* Current source line */
@@ -322,9 +354,10 @@ char exprcat;          /* category of expression being parsed, eg.
 void generate()
 {
     generating = 1;
-    if (prevloc) {
-       oldlc = loccounter  = prevloc-1 ;
-       os9 = prevloc = 0;
+    if (rmbmode) {
+        rmbcounter = loccounter;
+        oldlc = loccounter = prevloc;
+        rmbmode = 0;
     }
 }
 
@@ -344,7 +377,7 @@ scanname()
  while(1) {
    c=*srcptr++;
    if(c>='a'&&c<='z')c-=32;
-   if(c!='.'&&c!='$'&&(c<'0'||c>'9')&&(c<'A'||c>'Z'))break;
+   if(c!='_'&&c!='@'&&c!='.'&&c!='$'&&(c<'0'||c>'9')&&(c<'A'||c>'Z'))break;
    if(i<MAXIDLEN)namebuf[i++]=c;
  }
  namebuf[i]=0;
@@ -459,8 +492,8 @@ int scanfactor()
  if(isalpha(c))return scanlabel();
  else if(isdigit(c))return scandecimal();
  else switch(c) {
-  case '*' : if(prevloc) { srcptr++;exprcat|=2;return prevloc-1; }
-  case '.' : srcptr++;exprcat|=2;return loccounter;
+  case '*' : srcptr++;exprcat|=2; if(rmbmode) return prevloc; else return loccounter;
+  case '.' : srcptr++;exprcat|=2; if(os9&&!rmbmode) return rmbcounter; else return loccounter;
   case '$' : return scanhex();
   case '%' : return scanbin();
   case '&' : /* compatibility */
@@ -901,15 +934,16 @@ outlist()
 void
 setlabel(struct symrecord * lp)
 {
- if (prevlp) {
+ while (prevlp) {
      struct symrecord *l = prevlp;
-     prevlp = 0;
+     prevlp = prevlp->next;
+     l->next = 0;
      setlabel(l);
  }
  if(lp) {
   if(lp->cat!=13&&lp->cat!=6) {
    if(lp->cat!=2||lp->value!=loccounter)
-    error|=8;
+     lp->value=loccounter; // error|=8;
   } else {
    lp->cat=2;
    lp->value=loccounter;
@@ -946,8 +980,9 @@ doaddress() /* assemble the right addressing bytes for an instruction */
     break;
  case 4: case 6: offs=(unsigned short)operand-loccounter-codeptr-2;
                 if(offs<-128||offs>=128||opsize==3||unknown||!certain) {
-                  if((!unknown)&&opsize==2&&(offs<-128||offs>=128) )
-                     error|=16;
+                  if((!unknown)&&opsize==2&&(offs<-128||offs>=128) ) {
+                     error|=16; makelonger(glineno);
+                  }
                   offs--;
                   opsize=3;
                   postbyte++;
@@ -1003,7 +1038,20 @@ sbranch(int co)
  scanoperands();
  if(mode!=1&&mode!=2)error|=2;
  offs=(unsigned short)operand-loccounter-2;
- if(!unknown&&(offs<-128||offs>=128))error|=16;
+ if(!unknown&&(offs<-128||offs>=128)) {
+     error|=16;makelonger(glineno);
+     if (co==0x20) {
+         if(mode!=1&&mode!=2)error|=2;
+         putbyte(0x16);
+         putword(operand-loccounter-3);
+     } else {
+         if(mode!=1&&mode!=2)error|=2;
+         putbyte(0x10);
+         putbyte(co);
+         putword(operand-loccounter-4);
+     }
+     return;
+ }
  if(pass==2&&unknown)error|=4;
  putbyte(co);
  putbyte(offs);
@@ -1125,13 +1173,11 @@ skipComma()
  }
 }
 
-int modStart;
-
 void os9begin()
 {
  generate();
- os9=1;   // contiguous code generation ( i.e. ignore org nor rmb )
- modStart = loccounter;
+ os9=1;   // contiguous code generation ( seprate rmb and code )
+ oldlc = loccounter = rmbcounter = rmbmode = 0;
  reset_crc();
  putword(0x87cd);
  putword(scanexpr(0)-loccounter);  // module size
@@ -1150,6 +1196,10 @@ void os9begin()
    putword(scanexpr(0));   
    skipspace();
  }
+ prevloc = codeptr;
+ rmbmode = 1;                   // next org works on rmb
+ rmbcounter=0;
+ loccounter = 0x10000-codeptr;  // should start at 0
 }
 
 void os9end()
@@ -1159,6 +1209,7 @@ void os9end()
  putbyte((crc>>16)&0xff);
  putbyte((crc>>8)&0xff);
  putbyte(crc&0xff);
+ os9 = 0;
 }
 
 
@@ -1174,7 +1225,13 @@ pseudoop(int co,struct symrecord * lp)
  case 0:/* RMB */
         //   in OS9 mode, this generates no data
         //   loccounter will be reset after any code to the current code generation
+        if (os9 && !rmbmode) {
+            prevloc = loccounter;
+            oldlc = loccounter  = rmbcounter;
+            rmbmode = 1;
+        }
         setlabel(lp);
+        oldlc = loccounter;
         operand=scanexpr(0);
         if(unknown)error|=4;
         loccounter+=operand;
@@ -1194,8 +1251,9 @@ pseudoop(int co,struct symrecord * lp)
             (lp->value==(unsigned short)operand&&pass==2)) {
           if(exprcat==2)lp->cat=2;
           else lp->cat=0;
-          lp->value=operand;
-         } else error|=8;
+          lp->value=oldlc=operand;
+         } else // else error|=8;
+          lp->value=oldlc=operand;
         }
         break;
  case 7:/* FCB */
@@ -1241,7 +1299,7 @@ pseudoop(int co,struct symrecord * lp)
         setlabel(lp);
         skipspace();
         int sep = *srcptr;
-        if(sep=='\"' || sep=='/') {
+        if(sep=='\"' || sep=='/' || sep=='\'') {
          srcptr++;
          while(*srcptr!=sep&&*srcptr)
           putbyte(*srcptr++);
@@ -1257,24 +1315,24 @@ pseudoop(int co,struct symrecord * lp)
         break;                
  case 29: /* IFGT */
         operand=scanexpr(0);
-        if(unknown)error|=4;
-        if(operand>0)suppress=2;
+        if(operand<=0)suppress=2;
         break;                
  case 31: /* IFLT */
         operand=scanexpr(0);
-        if(unknown)error|=4;
-        if(operand<0)suppress=2;
+        if(operand>=0)suppress=2;
         break;                
  case 30: /* IFEQ */
         operand=scanexpr(0);
-        if(unknown)error|=4;
-        if(operand==0)suppress=2;
+        if(operand!=0)suppress=2;
         break;                
  case 28: /* IFNE */
  case 10: /* IF */
         operand=scanexpr(0);
-        if(unknown)error|=4;
-        if(!operand)suppress=2;
+        if(operand==0)suppress=2;
+        break;                
+ case 33: /* IFNDEF */
+        operand=scanexpr(0);
+        if(!unknown)suppress=2;
         break;                
  case 12: /* ORG */
          operand=scanexpr(0);
@@ -1300,15 +1358,15 @@ pseudoop(int co,struct symrecord * lp)
          if(lp->cat&1||lp->cat==6) {
           if(exprcat==2)lp->cat=3;
           else lp->cat=1;
-          lp->value=operand;
-         } else error|=8;
+          lp->value=oldlc=operand;
+         } else // else error|=8;
+          lp->value=oldlc=operand;
         }
         break;
    case 2: /* END */
         terminate=1;
         break;     
    case 27: /* USE */     
-        // locsave = loccounter ;
    case 16: /* INCLUDE */     
         skipspace();
         if(*srcptr=='"')srcptr++;
@@ -1324,7 +1382,6 @@ pseudoop(int co,struct symrecord * lp)
         processfile(fname);
         codeptr=0;
         srcline[0]=0;
-        // if (co==27) loccounter = locsave;
         break; 
    case 24: /* MOD */     
         oldlc = loccounter = 0;
@@ -1404,7 +1461,10 @@ processline()
   }
   else error|=0x8000;
  } else {
-     prevlp = lp;    // os9 mode label can be data or code 
+     if (lp) {
+         lp->next = prevlp;
+         prevlp = lp;    // os9 mode label can be data or code 
+     }
  }
  if(pass==2) {
   outbuffer();
@@ -1412,10 +1472,6 @@ processline()
  }
  if(error)report();
  loccounter+=codeptr;
- if (os9 && prevloc==0 ) {
-     prevloc = loccounter+1;
-     oldlc = loccounter = 0;
- }
 }
 
 void
@@ -1424,15 +1480,17 @@ suppressline()
  struct oprecord * op;
  srcptr=srcline;
  oldlc=loccounter;
+ struct symrecord * lp = 0;
  codeptr=0;
  if(isalnum(*srcptr)) {
-  scanname();
+  scanname();lp=findsym(namebuf);
+  if (lp) oldlc = lp->value;
   if(*srcptr==':')srcptr++;
  }
  skipspace();
- scanname();op=findop(namebuf);
+ scanname();op=findop(namebuf); 
  if(op && op->cat==13) {
-  if(op->code==10||op->code==13||op->code==29||op->code==28||op->code==21||op->code==30) ifcount++;
+  if(op->code==10||op->code==13||op->code==29||op->code==28||op->code==21||op->code==30||op->code==31||op->code==33) ifcount++;
   else if(op->code==3) {
    if(ifcount>0)ifcount--;else if(suppress==1|suppress==2)suppress=0;
   } else if(op->code==1) {
@@ -1563,9 +1621,12 @@ processfile(char *name)
  }
  while(!terminate&&fgets(inpline,128,srcfile)) {
    expandline();
-   lineno++;
+   lineno++; glineno++;
    srcptr=srcline;
-   if(suppress)suppressline(); else processline();
+   if(suppress)
+       suppressline(); 
+   else 
+       processline();
  }
  setlabel(0);   // process prevlp
  fclose(srcfile);
@@ -1593,12 +1654,15 @@ main(int argc,char *argv[])
   c=getchar();
   if(c=='n'||c=='N') exit(3);
  }
+ do {
  pass=2;
  prevloc = 0;
  loccounter=0;
+ rmbcounter=0;
  errors=0;
  generating=0;
  terminate=0;
+ glineno=0;
  if(listing&&((listfile=fopen(listname,"w"))==0)) {
   fprintf(stderr,"Cannot open list file");
   exit(4);
@@ -1619,6 +1683,7 @@ main(int argc,char *argv[])
   fprintf(objfile,"S9030000FC\n");
  } 
  fclose(objfile);
+ } while (longer());
  return 0;
 }
 
