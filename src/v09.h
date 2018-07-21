@@ -7,6 +7,8 @@
 
 */
 
+#include <stdio.h>
+
 typedef unsigned char Byte;
 typedef unsigned short Word;
 

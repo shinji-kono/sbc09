@@ -22,7 +22,7 @@ APPS=mon2.s
 # will be installed to ".."
 BIN=a09 v09 v09c d09 $(SIM_BIN) v09.rom 
 
-TARGETS=$(BIN) $(APPS)
+TARGETS=$(BIN) $(APPS)  
 
 OTHER=monitor.s makerom
 
@@ -33,12 +33,12 @@ all: $(TARGETS)
 a09 : a09.o os9crc.o
 	$(CC)  $(CFLAGS) $(V09FLAGS) a09.o os9crc.o -o $@
 
-v09: v09.o engine.o io.o d09.o trace.o
+v09: v09.o engine.o io.o d09.o trace.o vdisk.o
 	$(CC) -o v09 $(CFLAGS) v09.o engine.o io.o d09.o trace.o
 
 # with Coco MMU 
-v09c: v09.c engine.c io.c d09.o trace.o
-	$(CC) -o v09c $(CFLAGS) $(V09FLAGS) -DIOPAGE=0xff80 -DUSE_MMU=1 v09.c engine.c io.c d09.o trace.c
+v09c: v09.c engine.c io.c d09.o trace.o vdisk.o
+	$(CC) -o v09c $(CFLAGS) $(V09FLAGS) -DIOPAGE=0xff80 -DUSE_MMU=1 -DUSE_VDISK v09.c engine.c io.c d09.o trace.c vdisk.c
 
 a09.o : a09.c 
 	$(CC) -c $(CFLAGS) $(V09FLAGS) $< 
@@ -57,6 +57,9 @@ engine.o: engine.c
 
 io.o: io.c 
 	$(CC) -c $(CFLAGS) $(V09FLAGS) $<
+
+vdisk.o: vdisk.c v09.h
+	$(CC) -c $(CFLAGS) $(V09FLAGS) $< 
 
 trace.o: trace.c v09.h
 	$(CC) -c $(CFLAGS) $(V09FLAGS) $< 

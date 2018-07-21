@@ -56,6 +56,8 @@ src/
   trace.c
       The 6809 single board simulator/emulator v09.
           -DUSE_MMU to use MMU
+  vdisk.c
+      mount current directory on /v0 using VRBF
 
   d09.c
       6809 disassembler with os9 feature
@@ -80,6 +82,8 @@ src/
         init.asm
         sysgo.asm
         vector.asm
+        vrbf.asm   virtual rbf manager
+        v0.asm
 
 v09/v09c feature
 
@@ -92,10 +96,12 @@ v09 tracing command  ( may be very slow )
       s [count]  one step trace (default)
       n          step over call or os9 system call
       f          finish this call (until stack pop) (unreliable)
-      b [adr]    set break point (on current physical address)
-      B          break point list
+      b [adr]    set break / watch point (on current physical address)
+                 it stoped on pc==adr or value of adr was changed
+      B          break / watch point list
       d [n]      delte break point list
       c  [count] continue;
+      x  disassemble on pc
       x  [adr] [count]  dump
       xp page [adr] [count] mmu page dump
       xi [adr] [count]  disassemble
@@ -110,7 +116,8 @@ v09 tracing command  ( may be very slow )
       R  do reset  (unreliable)
       h,?  print this
 
-
+    to see GIME
+      x 0xff90
 
 a09 Assembler for os9
 -------------

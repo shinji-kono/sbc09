@@ -5,10 +5,12 @@ SRCCMD2=$(OS9SRC)/level2/cmds
 
 A09 = ../../a09 -I $(OS9SRC)/defs/
 
-all : ioman pdisk init os9p1 os9p2 os9p3_perr os9p4_regdump pipe pipeman pipeman_named piper rbf scf term pty d0 d1 clock vector boot shell dir mdir sysgo
+ALL = ioman pdisk init os9p1 os9p2 os9p3_perr os9p4_regdump pipe pipeman pipeman_named piper rbf scf term pty d0 d1 clock vector boot shell dir mdir sysgo v0 vrbf
+
+all : $(ALL)
 
 clean : 
-	rm -rf ioman pdisk init os9p1 os9p2 os9p3_perr os9p4_regdump pipe pipeman pipeman_named piper rbf scf term pty d0 d1 clock vector boot shell dir mdir sysgo *.lst *.dSYM
+	rm -rf $(ALL) *.lst *.dSYM
 
 LST = -l $@.lst
 pdisk : 
@@ -34,6 +36,9 @@ d0 : d0.asm
 
 d1 : d1.asm
 	$(A09) d1.asm -o d1 $(LST)
+
+v0 : v0.asm
+	$(A09) $@.asm -o $@ $(LST)
 
 clock :  
 	$(A09) ../level1/clock.asm -o clock $(LST)
@@ -79,6 +84,9 @@ piper :
 
 rbf :
 	$(A09) ${SRCDIR}/rbf.asm -o rbf $(LST)
+
+vrbf : vrbf.asm
+	$(A09) vrbf.asm -o vrbf $(LST)
 
 scf :
 	$(A09) $(OS9SRC)/level1/modules/scf.asm  -o $@ $(LST)

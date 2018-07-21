@@ -71,25 +71,6 @@ static struct longer {
      struct longer *next;
 } *lglist = 0;
 
-void makelonger(int gl) {
-    for(struct longer *p=lglist;p;p=p->next) {
-        if (p->gline==gl) { // already fixed
-            p->change = 1;
-            return;
-        }
-    }
-    struct longer *p = (struct longer *)calloc(sizeof(struct longer *),1);
-    p->gline=gl;
-    p->next = lglist;
-    lglist = p;
-}
-
-int longer() {
-    for(struct longer *p=lglist;p;p=p->next) {
-        if (p->change == 0) return 1;
-    }
-    return 0;
-}
 
 struct oprecord{char * name;
                 unsigned char cat;
@@ -351,6 +332,26 @@ char exprcat;          /* category of expression being parsed, eg.
                           label or constant, this is important when
                           generating relocatable object code. */
 
+void makelonger(int gl) {
+    if (pass==1) return;
+    for(struct longer *p=lglist;p;p=p->next) {
+        if (p->gline==gl) { // already fixed
+            p->change = 1;
+            return;
+        }
+    }
+    struct longer *p = (struct longer *)calloc(sizeof(struct longer *),1);
+    p->gline=gl;
+    p->next = lglist;
+    lglist = p;
+}
+
+int longer() {
+    for(struct longer *p=lglist;p;p=p->next) {
+        if (p->change == 0) return 1;
+    }
+    return 0;
+}
 void generate()
 {
     generating = 1;

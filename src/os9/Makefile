@@ -1,4 +1,4 @@
-all: os9mod makerom os9d.rom os9lv2.rom
+all: os9mod makerom os9d.rom os9lv2.rom os9v.rom
 
 CC=clang
 CFLAGS = -g
@@ -18,6 +18,8 @@ os9d.rom : makerom level1/init
 os9lv2.rom : makerom level2/init
 	./makerom -o os9lv2.rom -2  level2/Shell  level2/dir level2/d1 level2/ioman  level2/os9p3_perr level2/os9p4_regdump  level2/pipe level2/piper level2/pipeman  level2/scf level2/rbf level2/os9p2 level2/sysgo level2/pdisk level2/d0 level2/pty level2/term level2/init level2/boot level2/os9p1 
 
+os9v.rom : makerom level2/init
+	./makerom -o os9v.rom -2  level2/Shell  level2/dir level2/d1 level2/ioman  level2/os9p3_perr level2/os9p4_regdump  level2/pipe level2/piper level2/pipeman  level2/v0 level2/vrbf level2/scf level2/rbf level2/os9p2 level2/sysgo level2/pdisk level2/d0 level2/pty level2/term level2/init level2/boot level2/os9p1 
 
 level1/init : nitros9-code
 	cd level1 ; make

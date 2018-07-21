@@ -45,6 +45,9 @@ General Public License version 2, see LICENSE for more details.
 /*
  *   IO Map ( can be overrupped by ROM )
  *
+ *   In do_input/do_output call, we cannot access 6809 registers, since it is in i*reg, 
+ *     which  is a local variable of interpr
+ *
  *   IOPAGE ~ IOPAGE+0x7f
  *       for OS9 level2
  *       IOPAGE 0xff80 means ioport beging 0xff80 but IOPAGE itself starts 0xff00
@@ -71,12 +74,15 @@ General Public License version 2, see LICENSE for more details.
  *   IOPAGE + 0x31-  YY/MM/DD/HH/MM/SS
  *
  *   IOPAGE + 0x40   Disk control        0x81 read/0x55 write   0 ... ok / 0xff .. error
- *   IOPAGE + 0x41   drive no
- *   IOPAGE + 0x42   LSN2
+ *                                       0xd1- VDISK command
+ *   IOPAGE + 0x41   drive no           / VDISK drv
+ *   IOPAGE + 0x42   LSN2               / VDISK sysmode  0 for system, 1 for user 
  *   IOPAGE + 0x43   LSN1
- *   IOPAGE + 0x44   LSN0
- *   IOPAGE + 0x45   ADR2
+ *   IOPAGE + 0x44   LSN0               / VDISK Curdir pd number 
+ *   IOPAGE + 0x45   ADR2               / VDISK caller stack
  *   IOPAGE + 0x46   ADR1
+ *   IOPAGE + 0x47                      / VDISK path descriptor address (Y)
+ *   IOPAGE + 0x48   
  *
  *
  */
@@ -103,10 +109,19 @@ FILE *xfile;
 FILE *logfile;
 FILE *disk[] = {0,0};
 
+#ifdef USE_VDISK
+extern void do_vdisk(int c);
+#endif
+
+
 #ifdef USE_MMU
 extern char *prog ;   // for disass
 extern Byte * mem0(Byte *iphymem, Word adr, Byte *immu) ;
+#define pmem(a)  mem0(phymem,a,mmu)
+#else
+#define pmem(a)  (&mem[a])
 #endif
+
 
 extern int bpskip ;
 extern int stkskip ;
@@ -307,6 +322,7 @@ void do_timer(int a, int c) {
    }
 }
 
+
 void do_disk(int a, int c) {
    if (a!=0x40+(IOPAGE&0x1ff)) {
       mem[(IOPAGE&0xfe00)+a]=c;
@@ -316,17 +332,18 @@ void do_disk(int a, int c) {
    int lsn = (mem[IOPAGE+0x42]<<16) + (mem[IOPAGE+0x43]<<8) + mem[IOPAGE+0x44];
    int buf = (mem[IOPAGE+0x45]<<8) + mem[IOPAGE+0x46];
    if (drv > 1 || disk[drv]==0) goto error;
-#ifdef USE_MMU
-   Byte *phy = mem0(phymem,buf,mmu);
-#else
-   Byte *phy = &mem[buf];
-#endif
+   Byte *phy = pmem(buf);
    if (c==0x81) {
       if (lseek(fileno(disk[drv]),lsn*SECSIZE,SEEK_SET)==-1) goto error;
       if (read(fileno(disk[drv]),phy,SECSIZE)==-1) goto error;
    } else if (c==0x55) {
       if (lseek(fileno(disk[drv]),lsn*SECSIZE,SEEK_SET)==-1) goto error;
       if (write(fileno(disk[drv]),phy,SECSIZE)==-1) goto error;
+#ifdef USE_VDISK
+   } else  {
+       do_vdisk(c);
+       return;
+#endif
    }
    mem[IOPAGE+0x40] = 0;
    return;
