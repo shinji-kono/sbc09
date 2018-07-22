@@ -114,25 +114,22 @@ setuppd  ldx   #$FFc0           vdisk port
          stu   5,x              caller stack
          lda   <PD.DRV,y
          sta   1,x
-         clra
          ldy   <D.Proc          get process pointer
-         cmpy  <D.SysPrc
-         beq   sysmode
-         lda   #1
-sysmode  sta   2,x
          lda   R$A,u
          bita  #EXEC.
          bne   usechx
          ldb   P$DIO+3,y        get curwdir #pdnumber
          bra   s1
-usechx   ldb   P$DIO+9,y       get curxdir #pdnumber
+usechx   ldb   P$DIO+9,y        get curxdir #pdnumber
 s1       stb   4,x
          rts
 
 er00     puls  y,u,cc
+         ldb   R$b,u
          lda   R$Cc,u
          ora   #Carry
          sta   R$Cc,u
+         orcc  #Carry
          rts
 ok00     puls  y,u,cc,pc
 
@@ -324,12 +321,14 @@ Write    pshs  y,u,cc
          ldb   ,x
          beq   ok01
 er01     puls  y,u,cc
+         ldb   R$b,u
          lda   R$Cc,u
          ora   #Carry
          sta   R$Cc,u
          orcc  #Carry
          rts
 ok01     puls  y,u,cc,pc
+
 
 *
 * I$GetStat Entry Point

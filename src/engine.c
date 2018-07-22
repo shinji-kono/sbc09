@@ -248,7 +248,6 @@ void interpr(void)
 #endif
         do_trace(tracefile); 
    }
-   if(escape){ SAVEREGS do_escape(); LOADREGS }
    if(irq) {
     if(irq==1&&!(iccreg&0x10)) { /* standard IRQ */
 			 PUSHWORD(ipcreg)
@@ -274,6 +273,7 @@ void interpr(void)
     irq=0;
    }
   }
+  if(escape){ SAVEREGS do_escape(); LOADREGS }
   iflag=0;
  flaginstr:  /* $10 and $11 instructions return here */
   ireg=mem(ipcreg++);

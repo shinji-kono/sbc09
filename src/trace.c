@@ -182,7 +182,6 @@ restart:
                    bpskip = -1;
                    break;
                 } 
-        default:
         case 's':   // one step trace
                 trskip = 1;
                 if (s[1]) {
@@ -378,6 +377,10 @@ restart:
 #endif
                 attention = escape = 1;
                 break;
+        default:  // one step trace
+                trskip = 1;
+                bpskip = 0;
+                attention = escape = 1;
         }
         if (tracing||breakpoint||trskip||bpskip||stkskip) { attention = escape = 1; }
         else attention = 0;
@@ -386,16 +389,17 @@ restart:
 
 void setbreak(int adr, int count) {
   BPTR bp = calloc(1,sizeof(BP));
-  bp->next = breakpoint;
-  breakpoint = bp;
   bp->count = count;
   bp->laddr = adr;
   bp->address = paddr(adr,mmu);
 #ifdef USE_MMU
+  if (bp->address >= memsize) { free(bp); return; }
   bp->watch = *mem0(phymem,adr,mmu);
 #else
   bp->watch = mem[adr];
 #endif
+  bp->next = breakpoint;
+  breakpoint = bp;
 }
 
 int nexti(void) {

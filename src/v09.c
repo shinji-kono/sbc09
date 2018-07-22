@@ -83,7 +83,31 @@ read_image()
     exit(2);
  }
  long len = filesize(image);
+ /*
+  * 
+  *    0x0000-0xdfff    normal mem
+  *    0xxxxx-0xdfff    rom
+  *    0xe000-0xe100    i/o
+  *    0xe000-0xffff    rom
+  *
+  * discless boot
+  *    rom image will be copyied from 0xed00-0x1xxxx
+  *    boot copies 0x10000-0x1xxxx to os9's boot memory 
+  */
 #ifdef USE_MMU
+ /*
+  * In case of Coco, there is no ROM (switched out after boot )
+  *    0x00000-0x0fdff    normal mem
+  *    0x0fe00-0x0ffff    ram fixed address ram including io
+  *    0x10000-0x7ffff    ram (512Kb memory current implementation)
+  * it should have 2MB memory
+  *    0x10000-0xfffff    ram
+  *  >0x100000            lapround
+  *
+  * discless boot
+  *    rom image will be copyied from 0xed00-0x1xxxx
+  *    boot copies 0x10000-0x1xxxx to os9's boot memory 
+  */
  phymem = malloc(memsize + len - 0x2000);
  rommemsize = memsize + len - 0x2000;
  mem    = phymem + memsize - 0x10000 ;

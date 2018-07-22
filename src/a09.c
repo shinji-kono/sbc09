@@ -1182,12 +1182,16 @@ void os9begin()
  reset_crc();
  putword(0x87cd);
  putword(scanexpr(0)-loccounter);  // module size
+ if(unknown&&pass==2)error|=4;
  skipComma();
  putword(scanexpr(0)-loccounter);  // offset to module name
+ if(unknown&&pass==2)error|=4;
  skipComma();
  putbyte(scanexpr(0));             // type / language
+ if(unknown&&pass==2)error|=4;
  skipComma();
  putbyte(scanexpr(0));             // attribute
+ if(unknown&&pass==2)error|=4;
  int parity=0;
  for(int i=0; i< 8; i++) parity^=codebuf[i];
  putbyte(parity^0xff);              // header parity
@@ -1195,6 +1199,7 @@ void os9begin()
  while (*srcptr==',') {             // there are some more
    srcptr++;
    putword(scanexpr(0));   
+   if(unknown&&pass==2)error|=4;
    skipspace();
  }
  prevloc = codeptr;

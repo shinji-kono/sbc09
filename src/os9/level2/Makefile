@@ -23,7 +23,7 @@ sysgo : sysgo.asm
 	$(A09) sysgo.asm -o sysgo $(LST)
 
 init : init.asm
-	$(A09) ${OS9SRC}/level1/modules/init.asm -o $@ $(LST)
+	$(A09) init.asm -o $@ $(LST)
 
 vector : vector.asm
 	$(A09) vector.asm -o vector $(LST)
@@ -41,7 +41,7 @@ v0 : v0.asm
 	$(A09) $@.asm -o $@ $(LST)
 
 clock :  
-	$(A09) ../level1/clock.asm -o clock $(LST)
+	$(A09) clock.asm -o clock $(LST)
 
 pty :
 	$(A09) ../level1/pty.asm -o pty $(LST)

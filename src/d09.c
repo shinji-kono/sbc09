@@ -1375,7 +1375,7 @@ char *suffix;
 		  s = "-";
 		  offset=0xffff-offset+1;
 		}
-		fprintf(fp,"%0.2X %0.2X %0.2X %0.2X %s%s       %s$%0.4X,%s",
+		fprintf(fp,"%0.2X %0.2X %0.2X %0.2X %s%s       [%s$%0.4X,%s]",
 			code, postbyte, prog[pc+2], prog[pc+3], suffix, op->name, s, offset,
 		IndexRegister(postbyte));
 		extrabytes = 2;

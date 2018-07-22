@@ -22,7 +22,7 @@ tylg     set   Systm+Objct
 atrv     set   ReEnt+rev
 rev      set   $01
 edition  set   $06
-TimerPort set  $f8b0
+TimerPort set  $ffb0
 
          mod   eom,name,tylg,atrv,ClkEnt,size
 
@@ -33,15 +33,31 @@ name     fcs   /Clock/
 
 SysTbl   fcb   F$Time
          fdb   FTime-*-2
+         fcb   F$STime
+         fdb   FSTime-*-2
          fcb   $80
 
 
-ClockIRQ clra
-         tfr   a,dp
-L00AE    jsr   [>D.Poll]
-         bcc   L00AE
-L00B4    jmp   [>D.AltIRQ]
-         rts
+ClockIRQ ldx   #TimerPort
+         lda   ,x
+         bita  #$10
+         beq   L00AE
+L00AE    leax  ClockIRQ1,pcr
+         stx   <D.SvcIRQ
+         jmp   [D.XIRQ]   Chain through Kernel to continue IRQ handling
+ClockIRQ1
+         inc   <D.Sec     go up one second
+         lda   <D.Sec     grab current second
+         cmpa  #60        End of minute?
+         blo   VIRQend    No, skip time update and alarm check
+         clr   <D.Sec     Reset second count to zero
+VIRQend
+         ldx   #TimerPort
+         lda   #$8f
+         sta   >TimerPort
+         jmp   [>D.Clock]
+
+TkPerTS  equ   2
 
 ClkEnt   equ   *
          pshs  cc
@@ -51,23 +67,32 @@ ClkEnt   equ   *
 * install system calls
          leay  >SysTbl,pcr
          os9   F$SSvc
+         ldd   #59*256+TkPerTS last second and time slice in minute
+         std   <D.Sec     Will prompt RTC read at next time slice
+         stb   <D.TSlice  set ticks per time slice
+         stb   <D.Slice   set first time slice
+         lda   #TkPerSec  Reset to start of second
+         sta   <D.Tick
+
          ldx   #TimerPort
          ldb   #$8f     start timer
          stb   ,x
          puls  pc,cc
 
 * F$Time system call code
-FTime    ldx   R$X,u
-         ldy   #TimerPort
+FTime    ldx   #TimerPort
          ldb   #$04
-         stb   ,y
-         ldd   1,y
-         std   ,x
-         ldd   3,y
-         std   2,x
-         ldd   5,y
-         std   4,x
-         clrb
+         stb   ,x
+         leax  1,x        Address of system time packet
+RetTime  ldy   <D.Proc    Get pointer to current proc descriptor
+         ldb   P$Task,y   Process Task number
+         lda   <D.SysTsk  From System Task
+         ldu   R$X,u
+STime.Mv ldy   #6         Move 6 bytes
+FMove    os9   F$Move
+         rts
+
+FSTime   clrb
          rts
 
          emod

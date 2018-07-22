@@ -69,7 +69,7 @@ BannLen  equ   *-Banner
 
        IFEQ  ROM
 DefDev   equ   *
-         fcc   "/D0"
+         fcc   "/V0"
 *       IFNE  DD
 *         fcc   "/DD"
 *       ELSE
@@ -77,13 +77,14 @@ DefDev   equ   *
 *       ENDC
          fcb   C$CR
 HDDev    equ   *
-         fcc   "/DD"
+         fcc   "/V0"
+         fcb   C$CR
 *       IFNE  DD
 *         fcc   "/DD/"
 *       ELSE
 *         fcc   "/H0/"
 *       ENDC
-ExecDir  fcc   "/D0/CMDS"
+ExecDir  fcc   "/V0/cmds"
          fcb   C$CR
        ENDC
 
@@ -113,6 +114,14 @@ mdirprm  fcc   "-e"
 
 * Default time packet
 DefTime  
+         fcb     0
+         fcb     0
+         fcb     0
+         fcb     0
+         fcb     0
+         fcb     0
+         fcb     0
+         fcb     0
 * dtb
 
        IFEQ  atari+corsham
@@ -189,8 +198,8 @@ SignOn
          os9   I$Write                 write out banner
 
 * Set default time
-*         leax  >DefTime,pcr
-*         os9   F$STime                 set time to default
+         leax  >DefTime,pcr
+         os9   F$STime                 set time to default
 
          IFEQ  ROM
 * Change EXEC and DATA dirs
@@ -202,9 +211,9 @@ SignOn
          lda   #READ.
          os9   I$ChgDir                change data dir.
          bcs   L0125
-         leax  >HDDev,pcr
-         lda   #EXEC.
-         os9   I$ChgDir                change exec. dir to HD
+*         leax  >HDDev,pcr
+*         lda   #EXEC.
+*         os9   I$ChgDir                change exec. dir to HD
        ENDC
 
 L0125    equ   *

@@ -312,7 +312,7 @@ void do_timer(int a, int c) {
       time_t tm = time(0);
       struct tm *t = localtime(&tm);
       mem[IOPAGE+0x31] = t->tm_year;
-      mem[IOPAGE+0x32] = t->tm_mon;
+      mem[IOPAGE+0x32] = t->tm_mon+1;
       mem[IOPAGE+0x33] = t->tm_mday;
       mem[IOPAGE+0x34] = t->tm_hour;
       mem[IOPAGE+0x35] = t->tm_min;
@@ -331,12 +331,13 @@ void do_disk(int a, int c) {
    int drv = mem[IOPAGE+0x41];
    int lsn = (mem[IOPAGE+0x42]<<16) + (mem[IOPAGE+0x43]<<8) + mem[IOPAGE+0x44];
    int buf = (mem[IOPAGE+0x45]<<8) + mem[IOPAGE+0x46];
-   if (drv > 1 || disk[drv]==0) goto error;
    Byte *phy = pmem(buf);
    if (c==0x81) {
+      if (drv > 1 || disk[drv]==0) goto error;
       if (lseek(fileno(disk[drv]),lsn*SECSIZE,SEEK_SET)==-1) goto error;
       if (read(fileno(disk[drv]),phy,SECSIZE)==-1) goto error;
    } else if (c==0x55) {
+      if (drv > 1 || disk[drv]==0) goto error;
       if (lseek(fileno(disk[drv]),lsn*SECSIZE,SEEK_SET)==-1) goto error;
       if (write(fileno(disk[drv]),phy,SECSIZE)==-1) goto error;
 #ifdef USE_VDISK
@@ -368,8 +369,12 @@ void do_mmu(int a, int c)
 
 void timehandler(int sig) {
         attention = 1;
+#ifdef USE_MMU
+        irq = 1;
+#else
         irq = 2;
-        mem[(IOPAGE&0xfe00)+0x30] |= 0x10  ;
+#endif
+        mem[IOPAGE+0x30] |= 0x10  ;
         // signal(SIGALRM, timehandler);
 }
 
@@ -400,9 +405,9 @@ void set_term(char c) {
         fcntl(0, F_SETFL, tflags | O_NDELAY); /* Make input from stdin non-blocking */
         signal(SIGALRM, timehandler);
         timercontrol.it_interval.tv_sec = 0;
-        timercontrol.it_interval.tv_usec = 20000;
+        timercontrol.it_interval.tv_usec = 2000000;
         timercontrol.it_value.tv_sec = 0;
-        timercontrol.it_value.tv_usec = 20000;
+        timercontrol.it_value.tv_usec = 2000000;
         if (timer)
             setitimer(ITIMER_REAL, &timercontrol, NULL);
 }

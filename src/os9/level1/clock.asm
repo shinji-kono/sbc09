@@ -48,7 +48,8 @@ ClockIRQ clra
          ldb   #$8f     start timer
          stb   ,x
 L00B4    
-         jmp   [>D.SvcIRQ]
+         jsr   [>D.SvcIRQ]
+         rti
 
 ClkEnt   equ   *
          ldd   #59*256+$01 last second and last tick
@@ -66,8 +67,8 @@ ClkEnt   equ   *
          leay  <SysTbl,pcr
          os9   F$SSvc
          ldx   #TimerPort
-*         ldb   #$8f     start timer
-*         stb   ,x
+         ldb   #$8f     start timer
+         stb   ,x
          puls  pc,cc
 
 * F$Time system call code
