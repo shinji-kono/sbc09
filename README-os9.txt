@@ -23,17 +23,23 @@ This distribution includes
 How to make
 ---------
 
-    get os9 src from os9 archive (cocoos9.zip)
+    make clean; make
 
-    % ln -s $(SOMEWHERE)/CoCoOS9   .
-    % make
 
 How to run
 ---------
 
-add os9 disk image using -0 or -1 option ( ex. https://github.com/sorenroug/osnine-java.git )
+    make lv1
 
-    src/v09 -rom src/os9/os9d.rom -0 OS9.dsk -1 WORK.dsk 0
+or
+
+    make lv2
+
+vrbf mount current directory on /v0, put os9 command there.
+
+You can add os9 disk image using -0 or -1 option ( ex. https://github.com/sorenroug/osnine-java.git )
+
+    src/v09  -rom src/os9/os9lv1.rom -0 OS9.dsk -1 WORK.dsk 
 
     src/v09c -rom src/os9/os9lv2.rom -0 OS9.dsk -1 WORK.dsk 
 
@@ -71,6 +77,7 @@ src/
         clock.asm
         d0.asm
         d1.asm
+        v0.asm
         init.asm
         pdisk.asm
         printer.asm
@@ -80,6 +87,7 @@ src/
         boot.asm
         defsfile
         init.asm
+        clock.asm
         sysgo.asm
         vector.asm
         vrbf.asm   virtual rbf manager
@@ -89,6 +97,13 @@ v09/v09c feature
 
     Usage: v09 [-rom rom-image] [-t tracefile [-tl addr] [-nt][-th addr] ] [-e escchar] 
                [-0 diskImage0] [-1 diskImage1]
+
+    Usage: v09 [-rom rom-image] [-t tracefile [-tl addr] [-nt][-th addr] ] [-e escchar] 
+               [-0 diskImage0] [-1 diskImage1]
+
+ -nt start with trace on
+ -rom options use irq ( not firq ) timer, timer will not start until timer IO command
+ vrbf default is a current directory
 
 v09 tracing command  ( may be very slow )
 

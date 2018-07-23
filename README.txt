@@ -1,4 +1,20 @@
-6809 Simulator/Emulator
+6809 Simulator/Emulator with os9 level1/level2
+                                       Shini KONO (kono@ie.u-ryukyu.ac.jp) Mon Jul 23 10:59:06 JST 2018
+
+  using nitros9
+        hg clone http://hg.code.sf.net/p/nitros9/code nitros9-code
+
+  This emulator support vrbf ( simulate unix directory as a rbf disk ) and
+  ROM based boot. 
+
+      make clean; make
+
+  to run lv1 or lv2 
+
+      make lv1 
+         or
+      make lv2
+
 =======================
 
 sbc09 stands for Lennart Benschop 6809 Single Board Computer.
