@@ -48,8 +48,7 @@ ClockIRQ clra
          ldb   #$8f     start timer
          stb   ,x
 L00B4    
-         jsr   [>D.SvcIRQ]
-         rti
+         jmp   [>D.SvcIRQ]
 
 ClkEnt   equ   *
          ldd   #59*256+$01 last second and last tick

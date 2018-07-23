@@ -144,6 +144,7 @@ main(int argc,char *argv[])
  char *imagename=0;
  int i;
  int setterm = 1;
+ timerirq = 2;   // use FIRQ default
  memsize = 512*1024;
  escchar='\x1d'; 
  tracelo=0;tracehi=0xffff;
@@ -157,7 +158,8 @@ main(int argc,char *argv[])
      tracing=1;attention=1;    
    } else if (strcmp(argv[i],"-rom")==0) {
      i++;
-     timer = 0;  // non standard rom image, don't start timer
+     timer = 0;         // non standard rom image, don't start timer
+     timerirq = 1 ;     // os9 cannot handle FIRQ
      romfile = argv[i];
 
    } else if (strcmp(argv[i],"-0")==0) {

@@ -109,7 +109,9 @@ Open     pshs  y,u,cc
 *         PD.DEV,y    device table
 *         PD.DRV,y    drive number
 
-setuppd  ldx   #$FFc0           vdisk port
+setuppd  ldx   PD.DEV,y         get device table
+         ldx   4,x              get device module
+         ldx   $f,x            get port address
          sty   7,x              path descriptor
          stu   5,x              caller stack
          lda   <PD.DRV,y

@@ -91,6 +91,7 @@ General Public License version 2, see LICENSE for more details.
 
 
 int timer = 1;
+int timer_usec = 20000;   //  50Hz
 struct termios termsetting;
 struct termios newterm;
 struct itimerval timercontrol;
@@ -297,9 +298,9 @@ void do_timer(int a, int c) {
    struct itimerval timercontrol;
    if (a==0x30+(IOPAGE&0x1ff) && c==0x8f) {
         timercontrol.it_interval.tv_sec = 0;
-        timercontrol.it_interval.tv_usec = 20000;
+        timercontrol.it_interval.tv_usec = timer_usec;
         timercontrol.it_value.tv_sec = 0;
-        timercontrol.it_value.tv_usec = 20000;
+        timercontrol.it_value.tv_usec = timer_usec;
         timer_irq = 1;
         setitimer(ITIMER_REAL, &timercontrol, NULL);
         mem[(IOPAGE&0xfe00)+a]=c;
@@ -369,11 +370,7 @@ void do_mmu(int a, int c)
 
 void timehandler(int sig) {
         attention = 1;
-#ifdef USE_MMU
-        irq = 1;
-#else
-        irq = 2;
-#endif
+        irq = timerirq;
         mem[IOPAGE+0x30] |= 0x10  ;
         // signal(SIGALRM, timehandler);
 }
@@ -405,9 +402,9 @@ void set_term(char c) {
         fcntl(0, F_SETFL, tflags | O_NDELAY); /* Make input from stdin non-blocking */
         signal(SIGALRM, timehandler);
         timercontrol.it_interval.tv_sec = 0;
-        timercontrol.it_interval.tv_usec = 2000000;
+        timercontrol.it_interval.tv_usec = timer_usec;
         timercontrol.it_value.tv_sec = 0;
-        timercontrol.it_value.tv_usec = 2000000;
+        timercontrol.it_value.tv_usec = timer_usec;
         if (timer)
             setitimer(ITIMER_REAL, &timercontrol, NULL);
 }

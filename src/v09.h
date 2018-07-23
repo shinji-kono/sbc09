@@ -36,6 +36,7 @@ engine Byte * mem;
 #endif
 
 engine volatile int tracing,attention,escape,irq;
+engine int timerirq;
 engine Word tracehi,tracelo;
 engine char escchar;
 engine int timer;

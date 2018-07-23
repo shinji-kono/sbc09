@@ -69,7 +69,7 @@ BannLen  equ   *-Banner
 
        IFEQ  ROM
 DefDev   equ   *
-         fcc   "/D0"
+         fcc   "/V0"
 *       IFNE  DD
 *         fcc   "/DD"
 *       ELSE
@@ -77,13 +77,13 @@ DefDev   equ   *
 *       ENDC
          fcb   C$CR
 HDDev    equ   *
-         fcc   "/DD"
+         fcc   "/V0"
 *       IFNE  DD
 *         fcc   "/DD/"
 *       ELSE
 *         fcc   "/H0/"
 *       ENDC
-ExecDir  fcc   "/D0/CMDS"
+ExecDir  fcc   "/V0/CMDS"
          fcb   C$CR
        ENDC
 
@@ -110,6 +110,15 @@ ShellPL  equ   *-ShellPrm
 
 * Default time packet
 DefTime  
+         fcb 0
+         fcb 0
+         fcb 0
+         fcb 0
+         fcb 0
+         fcb 0
+         fcb 0
+         fcb 0
+         fcb 0
 * dtb
 
        IFEQ  atari+corsham
@@ -185,9 +194,9 @@ SignOn
          lda   #$01                    standard output
          os9   I$Write                 write out banner
 
-* Set default time
-*         leax  >DefTime,pcr
-*         os9   F$STime                 set time to default
+* Set default time and start Clock module
+          leax  >DefTime,pcr
+          os9   F$STime                 set time to default
 
         IFEQ 1 
           leax  >MDIR,pcr

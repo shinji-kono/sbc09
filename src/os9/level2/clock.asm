@@ -18,6 +18,8 @@
          use   defsfile
          endc
 
+usefirq  equ 0
+
 tylg     set   Systm+Objct
 atrv     set   ReEnt+rev
 rev      set   $01
@@ -38,7 +40,18 @@ SysTbl   fcb   F$Time
          fcb   $80
 
 
-ClockIRQ ldx   #TimerPort
+       ifeq  usefirq-1
+ClockFIRQ 
+         leas  -1,s
+         pshs  d,dp,x,y
+         lda   8,s
+         ora   #$80       Entire flag
+         pshs  a
+         stu   8,s
+         jmp   [$FFF8]
+       endc
+ClockIRQ 
+         ldx   #TimerPort
          lda   ,x
          bita  #$10
          beq   L00AE
@@ -64,6 +77,10 @@ ClkEnt   equ   *
          orcc  #FIRQMask+IRQMask       mask ints
          leax  >ClockIRQ,pcr
          stx   <D.IRQ
+       ifeq usefirq-1
+         leax  >ClockFIRQ,pcr
+         stx   $FFF6     must be a RAM
+       endc
 * install system calls
          leay  >SysTbl,pcr
          os9   F$SSvc

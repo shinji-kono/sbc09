@@ -6,7 +6,7 @@ SRCDIR2 = $(OS9SRC)/level2/modules
 
 A09 = ../../a09 -I $(OS9SRC)/defs/
 
-MOD =  pdisk init os9p1 os9p2 ioman pipe piper rbf scf term pty d0 d1 clock shell dir mdir sysgo shell
+MOD =  pdisk init os9p1 os9p2 ioman pipe piper rbf scf term pty d0 d1 vrbf v0 clock shell dir mdir sysgo shell
 
 all : ${MOD}
 
@@ -42,6 +42,12 @@ d1 : d1.asm
 
 clock :  clock.asm
 	$(A09) clock.asm -o clock $(LST)
+
+vrbf :  
+	$(A09) ../level2/vrbf.asm -o $@  $(LST)
+
+v0 :  
+	$(A09) v0.asm -o $@  $(LST)
 
 # os9 level1 moduels
 
