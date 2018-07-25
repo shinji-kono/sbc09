@@ -561,9 +561,11 @@ do_vdisk(Byte cmd) {
 
         case 0xd3:
             *breg = 0xff;
+            mode = *areg;
+            attr = *breg;
             path = (char*)pmem(xreg);
             next =  checkFileName(path,pd,curdir);
-            if (next!=0 &&  mkdir(pd->name,0)!= 0 ) {
+            if (next!=0 &&  mkdir(pd->name,os9mode(attr))== 0 ) {
                 xreg += ( next - path );
                 *breg = 0;
             } 
