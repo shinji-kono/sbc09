@@ -72,10 +72,9 @@ start    lbra  Create
 Create   pshs  y,u,cc		Preserve path desc ptr
          orcc  #IntMasks
          bsr   setuppd
-         stb   4,u              put file attribute
          ldb   #$d1
-         stb   ,u               do IO   b,x will be rewrited
-         ldb   ,u
+         stb   ,x               do IO   b,x will be rewrited
+         ldb   ,x
          beq   ok00
          bra   er00
 

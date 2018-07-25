@@ -1,7 +1,8 @@
 /* 6808 Simulator V092
  *
+ *          2018 Shinji KONO
  * tracer
-
+ *
 */
 
 #include<stdio.h>
@@ -239,6 +240,9 @@ restart:
                    bpskip = getarg(s+1,0);
                 }
                 break;
+                /*
+                 * we should have disassembler for a mmu page
+                 */
         case 'x':   // dump 
            {    char *next = s+1;
                 if (s[1]=='i') next=s+2;
@@ -376,6 +380,8 @@ restart:
                 mem[0xffa7]=0x3f;
 #endif
                 attention = escape = 1;
+                // we have to reload romfile
+                // readimage();
                 break;
         default:  // one step trace
                 trskip = 1;
@@ -387,6 +393,9 @@ restart:
         set_term(escchar);
 }
 
+/*
+ *     keep break point / watch point in a list
+ */
 void setbreak(int adr, int count) {
   BPTR bp = calloc(1,sizeof(BP));
   bp->count = count;
@@ -402,6 +411,12 @@ void setbreak(int adr, int count) {
   breakpoint = bp;
 }
 
+/*
+ * length call instruction
+ *
+ * if call instruction, put temporary break on next instruction
+ *   (ignoring page boundary, sorry)
+ */
 int nexti(void) {
 #ifdef USE_MMU
     int op1 = *mem0(phymem,pcreg,mmu);
@@ -453,10 +468,4 @@ int nexti(void) {
     return ofs;
 }
 
-
-
-
-
-
-
-
+/* end */

@@ -39,22 +39,38 @@ SysTbl   fcb   F$Time
          fcb   $80
 
 
-ClockIRQ clra
-         tfr   a,dp
-         ldx   #TimerPort
+ClockIRQ ldx   #TimerPort
          lda   ,x
          bita  #$10
-         beq   L00B4
+         bne   L00B4
+L00AE    jsr   [>D.Poll]  poll ISRs
+         bcc   L00AE      keep polling until carry set
+         jmp   [>D.AltIRQ] jump into an alternate IRQ if available
+
+L00B4
          ldb   #$8f     start timer
          stb   ,x
-L00B4    
-         jmp   [>D.SvcIRQ]
+
+         dec   <D.Tick 
+         bne   L007F      go around if not zero
+         ldb   <D.Sec     get minutes/seconds
+* Seconds increment
+         incb             increment seconds
+         cmpb  #60        full minute?
+         blo   L007F
+         ldb   <D.TSec
+         stb   <D.Tick
+         bsr   FTime
+L007F    stb   <D.Sec
+
+         jmp   [>D.Clock]
 
 ClkEnt   equ   *
          ldd   #59*256+$01 last second and last tick
          std   <D.Sec     will prompt RTC read at next time slice
-*         ldb   #TkPerSec
-*         stb   <D.TSec    set ticks per second
+         ldb   #TkPerSec
+         stb   <D.TSec    set ticks per second
+         stb   <D.Tick    set ticks per second
          ldb   #TkPerTS   get ticks per time slice
          stb   <D.TSlice  set ticks per time slice
          stb   <D.Slice   set first time slice
@@ -77,12 +93,14 @@ FTime    ldx   R$X,u
          stb   ,y
          ldd   1,y
          std   ,x
+         std   <D.Year
          ldd   3,y
          std   2,x
+         std   <D.Day
          ldd   5,y
          std   4,x
+         std   <D.Min
          clrb
-
          rts
 
          emod

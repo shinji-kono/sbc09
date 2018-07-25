@@ -158,7 +158,7 @@ main(int argc,char *argv[])
      tracing=1;attention=1;    
    } else if (strcmp(argv[i],"-rom")==0) {
      i++;
-     timer = 0;         // non standard rom image, don't start timer
+     timer = 3;         // non standard rom image, don't start timer, and timder start call enabled
      timerirq = 1 ;     // os9 cannot handle FIRQ
      romfile = argv[i];
 
@@ -182,7 +182,7 @@ main(int argc,char *argv[])
      romstart=strtol(argv[i],(char**)0,0);
    } else if (strcmp(argv[i],"-nt")==0) {  // start debugger at the start
      attention = escape = 1;
-     timer = 0;   // no timer
+     timer = 1;   // desable default  timer interrupt and don't start timer on timer start IO 
    } else if (strcmp(argv[i],"-m")==0) {
      i++;
      memsize=strtol(argv[i],(char**)0,0) & ~0xffff;

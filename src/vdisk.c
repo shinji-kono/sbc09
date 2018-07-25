@@ -16,8 +16,9 @@
 #include <string.h>
 #include <time.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
-static int vdiskdebug = 0;  //   bit 1 trace, bit 2 filename
+static int vdiskdebug = 1;  //   bit 1 trace, bit 2 filename
 
 
 Byte pmmu[8];  // process dat mmu
@@ -36,19 +37,23 @@ extern Byte * mem0(Byte *iphymem, Word adr, Byte *immu) ;
 
 #define MAXPDV 256
 
+/*
+ * os9 has one path descriptor for one open file or directory
+ * keep coresponding information in vdisk file manager
+ */
 
 typedef struct pathDesc {
-    char *name;
-    FILE *fp;
+    char *name;  // path name relative to drvRoot
+    FILE *fp;    // file , memfile for directory
     int mode;
     int inode ;  // lower 24 bit of unix inode, os9 lsn
     int num ;
     int sz ;     // used only for directory
     char drv ;
     char use ;
-    char dir;
-    char *fd ;
-    char *dirfp;
+    char dir;    // is directory?
+    char *fd ;   //  simulated os9 file descriptor ( not used now)
+    char *dirfp; //  simulated os9 directory file
 } PathDesc, *PathDescPtr;
 
 static void 
@@ -60,8 +65,7 @@ static char *drvRoot[] = { ".",".",".","."};
 static PathDesc pdv[MAXPDV];
 
 /*
- * us 0 system
- *    1 caller
+ * byte order staff
  */
 static inline Word 
 getword(Byte *adr) {
@@ -75,7 +79,7 @@ setword(Byte *adr,Word value) {
     *padr = htons(value);
 }
 
-static int 
+int 
 setVdisk(int drv,char *name) {
     if (drv<0 || drv>=MAXVDRV) return -1;
     drvRoot[drv] = name;
@@ -96,6 +100,8 @@ closepd(PathDesc *pd) {
 /*
  * keep track current directory ( most recently 256 entry )
  * too easy approach
+ *
+ * dir command keep old directory LSN, so we have to too
  */
 char *cdt[512];
 static int cdtptr = 0;
@@ -115,6 +121,9 @@ setcd(char *name) {
 
 #define MAXPAHTLEN 256
 
+/*
+ * print os9 string for debug
+ */
 static void
 putOs9str(char *s,int max) {
     if (s==0) {
@@ -132,6 +141,10 @@ err(int error) {
     printf("err %d\n",error);
 }
 
+/*
+ * add current directory name to the path
+ * if name starts /v0, drvRoot will be add
+ */
 static char *
 addCurdir(char *name, PathDesc *pd, int curdir) {
     int ns =0 ;
@@ -167,6 +180,12 @@ if(vdiskdebug&0x2) { printf("addcur \""); putOs9str(name,0); printf("\" cur \"")
     return path;
 }
 
+/*
+ * os9 file name may contains garbage such as 8th bit on or traling space
+ * fix it. and make the pointer to next path for the return value 
+ *
+ * pd->name will be freed, we have to malloc it
+ */
 static char * 
 checkFileName(char *path, PathDesc *pd, int curdir) {
     char *p = path;
@@ -182,6 +201,8 @@ if(vdiskdebug&2) { printf("checkf \""); putOs9str(name,0); printf("\"\n"); }
         for(i=0;i<p-path;i++) name[i] = path[i];
         if (eighth) { name[i] = path[i]&0x7f; p++ ; i++; }
         name[i] = 0;
+        // skip trailing space
+        while(*p==' ') p++;
     }
     char *name1 = addCurdir(name,pd,curdir);
     if (name1!=name && name1!=path) free(name);
@@ -197,6 +218,9 @@ if(vdiskdebug&2) {
     return p;
 }
 
+/*
+ * os9 / unix mode conversion
+ */
 static void 
 os9setmode(Byte *os9mode,int mode) {
     char m = 0;
@@ -212,12 +236,26 @@ os9setmode(Byte *os9mode,int mode) {
 }
 
 static char * 
-os9toUnixAttr(Byte attr) {
-    if ((attr&0x1) && (attr&0x2)) return "r+";
-    if (!(attr&0x1) && (attr&0x2)) return "w";
-    if ((attr&0x1) && !(attr&0x2)) return "r";
+os9toUnixAttr(Byte mode) {
+    if ((mode&0x1) && (mode&0x2)) return "r+";
+    if (!(mode&0x1) && (mode&0x2)) return "w";
+    if ((mode&0x1) && !(mode&0x2)) return "r";
     return "r";
 }
+
+static int 
+os9mode(Byte m) {
+    int mode = 0;
+    if ((m&0x80)) mode|=S_IFDIR ;
+    if ((m&0x01)) mode|=S_IRUSR ;
+    if ((m&0x02)) mode|=S_IWUSR ;
+    if ((m&0x04)) mode|=S_IXUSR ;
+    if ((m&0x08)) mode|=S_IROTH ;
+    if ((m&0x10)) mode|=S_IWOTH ;
+    if ((m&0x20)) mode|=S_IXOTH ;
+    return mode;
+}
+
 
 /*
  *   os9 file descriptor
@@ -266,7 +304,11 @@ os9toUnixAttr(Byte attr) {
 #define DIR_NM 29
 
 
-/* read direcotry entry */
+/* read direcotry entry 
+ *
+ * create simulated os9 directory structure for dir command
+ * writing to the directory is not allowed
+ * */
 static int 
 os9opendir(PathDesc *pd) {
     DIR *dir;
@@ -318,6 +360,8 @@ os9setdate(Byte *d,struct timespec * unixtime) {
 /* read file descriptor of Path Desc 
  *    create file descriptor sector if necessary
  *    if buf!=0, copy it 
+ *
+ *    only dir command accesses this using undocumented getstat fdinfo command
  */
 static int 
 filedescriptor(Byte *buf, int len, Byte *name,int curdir) {
@@ -343,7 +387,10 @@ err1:
     return err;
 }
 
-/* read direcotry entry for any file in the directory 
+/* 
+ * undocumented getstat command
+ *
+ * read direcotry entry for *any* file in the directory 
  *     we only returns a file descriptor only in the current opened directory
  *
  *     inode==0 should return disk id section
@@ -370,16 +417,32 @@ fdinfo(Byte *buf,int len, int inode, PathDesc *pd,int curdir) {
     return 255;
 }
 
+/*
+ *  on os9 level 2, user process may on different memory map
+ *  get DAT table on process descriptor on 0x50 in system page
+ */
 void
 getDAT() {
+#ifdef USE_MMU
     Word ps = getword(smem(0x50));      // process structure
-    Byte *dat = smem(ps+0x40);  // process dat (dynamic address translation)
+    Byte *dat = smem(ps+0x40);          // process dat (dynamic address translation)
     for(int i=0; i<8; i++) {
         pmmu[i] = dat[i*2+1];
     }
+#endif
 }
 
 /*
+ *   vdisk command processing
+ *
+ *   vrbf.asm will write a command on 0x40+IOPAGE ( 0xffc0 or 0xe040)
+ *
+ *   U contains caller's stack (call and return value)  on 0x45+IOPAGE
+ *   current directory (cwd or cxd)                     on 0x44+IOPAGE
+ *   Path dcriptor number                               on 0x47+IOPAGE
+ *   drive number                                       on 0x41+IOPAGE
+ *   caller's process descriptor                        on <0x50
+ *
  *   each command should have preallocated os9 path descriptor on Y
  *
  *   name or buffer, can be in a user map, check that drive number ( mem[0x41+IOPAGE]  0 sys 1 user )
@@ -424,16 +487,20 @@ do_vdisk(Byte cmd) {
         case 0xd1:
             mode = *areg;
             attr = *breg;
+            pd->fp = 0;
             path = (char *)pmem(xreg);
-            next = pd->name  = checkFileName(path,pd,curdir);
-            pd->dir = 0;
-            pd->fp = fopen(pd->name, os9toUnixAttr(attr));
+            next = checkFileName(path,pd,curdir);
+            *breg = 0xff;
+            int fd = open(pd->name, O_RDWR+O_CREAT,os9mode(attr) );
+            if (fd>0)
+                pd->fp = fdopen(fd, os9toUnixAttr(mode));
             if (next!=0 && pd->fp ) {
+                *breg = 0;
+                *areg = pd->num;
+                *smem(u+1) = *areg ;
                 xreg += ( next - path );
                 pd->use = 1;
             } else  {
-                *breg = 0xff;
-                free(pd->name);
                 pd->use = 0;
             }
             break;
@@ -451,7 +518,6 @@ do_vdisk(Byte cmd) {
         *        B = errcode
         */
         case 0xd2:
-            *breg = 0xff;
             mode = *areg;
             attr = *breg;
             pd->fp = 0;
@@ -527,23 +593,24 @@ do_vdisk(Byte cmd) {
         *
         *
         * we keep track a cwd and a cxd for a process using 8bit id
+        * don't use path descriptor on y 
         */
-        case 0xd4:
+        case 0xd4: {
+            PathDesc dm = *pd;
             path = (char*)pmem(xreg);
-            next = checkFileName(path,pd,curdir);
+            next = checkFileName(path,&dm,curdir);
             if (next!=0) { 
                 struct stat buf;
-                if (stat(pd->name,&buf)!=0) break;
+                if (stat(dm.name,&buf)!=0) break;
                 if ((buf.st_mode & S_IFMT) != S_IFDIR) break;
                 xreg += ( next - path );
-                *areg = setcd(pd->name);
+                *areg = setcd(dm.name);
                 *smem(u+1) = *areg ;
-                pd->use = 1;
-                pd->dir = 1;
                 *breg = 0;
                 break;
             } 
             *breg = 0xff;
+         }
             break;
 
         /*
@@ -670,7 +737,7 @@ do_vdisk(Byte cmd) {
             int len = yreg;
             int i = 0;
             Byte *buf = pmem(xreg);
-            while(len>0 && *buf !='\r') {
+            while(len>0 && buf[i] !='\r') {
                 fputc(buf[i++],pd->fp);
                 len--;
             }
@@ -770,7 +837,7 @@ do_vdisk(Byte cmd) {
                     if (pd==0) break;
                     *breg = filedescriptor(pmem(xreg), yreg,(Byte*)pd->name,curdir) ;
                     break;
-                case 0x20: // Pos.FDInf    mandatry for dir command
+                case 0x20: // Pos.FDInf    mandatry for dir command (undocumented, use the source)
                 /*         SS.FDInf ($20) - Directly reads a file descriptor from anywhere
                  *                          on drive.
                  *                          Entry: R$A=Path #
@@ -835,8 +902,14 @@ vdisklog(Word u,PathDesc *pd, Word pdptr, int curdir, FILE *fp) {
     xreg  = getword(frame+4);
     yreg  = getword(frame+6);
     ureg  = getword(frame+8);
-    pcreg  = getword(frame+10)-3;
+    pcreg  = getword(frame+10)-3;            // point os9 swi2
     prog = (char*)(pmem(pcreg) - pcreg);
+    if (*pmem(pcreg)==0 && *pmem(pcreg+1)==0) {
+        // may be we are called from system state
+        // of coursel, this may wrong. but in system state, <$50 process has wrong DAT for pc
+        // and we can't know wether we are called from system or user
+        prog = (char*)(smem(pcreg) - pcreg);
+    }
     do_trace(fp);
 }
 

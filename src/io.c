@@ -90,7 +90,7 @@ General Public License version 2, see LICENSE for more details.
 #define SECSIZE 256
 
 
-int timer = 1;
+int timer = 0;
 int timer_usec = 20000;   //  50Hz
 struct termios termsetting;
 struct termios newterm;
@@ -297,6 +297,7 @@ void do_output(int a, int c) {
 void do_timer(int a, int c) {
    struct itimerval timercontrol;
    if (a==0x30+(IOPAGE&0x1ff) && c==0x8f) {
+        if ((timer&2)==0) return;  
         timercontrol.it_interval.tv_sec = 0;
         timercontrol.it_interval.tv_usec = timer_usec;
         timercontrol.it_value.tv_sec = 0;
@@ -405,7 +406,7 @@ void set_term(char c) {
         timercontrol.it_interval.tv_usec = timer_usec;
         timercontrol.it_value.tv_sec = 0;
         timercontrol.it_value.tv_usec = timer_usec;
-        if (timer)
+        if (!timer)   // original sbc09 start timer from the beginning
             setitimer(ITIMER_REAL, &timercontrol, NULL);
 }
 
