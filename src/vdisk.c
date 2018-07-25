@@ -18,7 +18,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 
-static int vdiskdebug = 1;  //   bit 1 trace, bit 2 filename
+static int vdiskdebug = 0;  //   bit 1 trace, bit 2 filename
 
 
 Byte pmmu[8];  // process dat mmu
