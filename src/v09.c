@@ -44,6 +44,10 @@ extern char *prog;    // for disasm
 extern void disasm(int,int);
 extern void do_mmu(Word,Byte);
 extern void init_term(void) ;
+#ifdef USE_VDISK
+extern int setVdisk(int drv,char *name) ;
+#endif
+
 
 
 void do_trace(FILE *tracefile)
@@ -131,6 +135,10 @@ read_image()
 void usage(void)
 {
  fprintf(stderr,"Usage: v09 [-rom rom-image] [-l romstart] [-t tracefile [-tl addr] [-nt]"
+           "[-[01] disk-image ] "
+#ifdef USE_VDISK
+           "[v vdisk-base-dir ] "
+#endif
                 "[-th addr] ]\n[-e escchar] \n");
  exit(1); 
 }
@@ -168,6 +176,11 @@ main(int argc,char *argv[])
    } else if (strcmp(argv[i],"-1")==0) {
       i++;
       disk[1] = fopen(argv[i],"r+");
+#ifdef USE_VDISK
+   } else if (strcmp(argv[i],"-v")==0) {
+      i++;
+      setVdisk(0,argv[i]);
+#endif
    } else if (strcmp(argv[i],"-tl")==0) {
      i++;
      tracelo=strtol(argv[i],(char**)0,0);

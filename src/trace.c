@@ -68,21 +68,42 @@ int bpskip = 0;
 int trskip = 0;
 int stkskip = 0;
 
+int getterm(char *buf, char** next) {
+     int value = 0;
+     while (*buf==' ') buf++;
+     if (*buf=='x') { value = xreg; buf++; *next = buf ;
+     } else if (*buf=='y') { value = yreg; buf++; *next = buf;
+     } else if (*buf=='u') { value = ureg; buf++; *next = buf;
+     } else if (*buf=='s') { value = sreg; buf++; *next = buf;
+     } else if (*buf=='p') { value = pcreg; buf++; *next = buf;
+     } else if (*buf=='d') { value = (*areg<<8)+*breg; buf++; *next = buf;
+     } else if (*buf=='a') { value = *areg; buf++; *next = buf;
+     } else if (*buf=='b') { value = *breg; buf++; *next = buf;
+     } else value = strtol(buf,next,0);
+     return value;
+}
+
 int getarg(char *buf, char** next) {
-     int value = strtol(buf,next,0);
-     for(;next;) {
+     int value = 0;
+     char *b = buf;
+     if (next==0) next = &b;
+     value=getterm(*next,next);
+     for(;**next;) {
          if  ( **next == '+' ) {
-            value += strtol(*next+1,next,0);
+            value += getterm(*next+1,next);
          } else if  ( **next == '*' ) {
-            value *= strtol(*next+1,next,0);
+            value *= getterm(*next+1,next);
          } else if  ( **next == '/' ) {
-            value /= strtol(*next+1,next,0);
+            value /= getterm(*next+1,next);
          } else if  ( **next == '-' ) {
-            value -= strtol(*next+1,next,0);
+            value -= getterm(*next+1,next);
          } else if  ( **next == '&' ) {
-            value &= strtol(*next+1,next,0);
+            value &= getterm(*next+1,next);
          } else if  ( **next == '|' ) {
-            value |= strtol(*next+1,next,0);
+            value |= getterm(*next+1,next);
+         } else if  ( **next == '(' ) {
+            value = getarg(*next+1,next);
+            if(**next==')') *next=*next+1;
          } else break;
      }
      return value;
@@ -91,6 +112,7 @@ int getarg(char *buf, char** next) {
 void printhelp(void)
 {
   printf( 
+     "use 0x for hex inputs\n"
      "  s [count]  one step trace\n"
      "  n          step over\n"
      "  f          finish this call (until stack pop)\n"
@@ -98,11 +120,13 @@ void printhelp(void)
      "  B          break point list\n"
      "  d [n]      delte break point list\n"
      "  c  [count] continue;\n"
+     "  p  data    print\n"
      "  x  [adr] [count]  dump\n"
-#ifdef USE_MMU
-     "  xp page [adr]   dump physical memory\n"
-#endif
      "  xi [adr] [count]  disassemble\n"
+#ifdef USE_MMU
+     "  x  [p page] [offset] [count]  dump physical memory\n"
+     "  xi [p page] [offset] [count]  disassemble\n"
+#endif
      "  0  file    disk drive 0 image\n"
      "  1  file    disk drive 1 image\n"
      "  L  file    start log to file\n"
@@ -178,6 +202,11 @@ restart:
         fgets(s, sizeof(s)-1, stdin); 
         s[strlen(s)-1] = 0; // chop
         switch (s[0]) {
+        case 'p':  {
+                int d = getarg(s+1,0);
+                printf("0x%x %d '%c'\n",d,d,(d<' '||d>0x7f)?' ':d);
+                goto restart;
+           } 
         case 'n':   // step over
                 if (nexti()) {
                    bpskip = -1;
@@ -244,52 +273,51 @@ restart:
                  * we should have disassembler for a mmu page
                  */
         case 'x':   // dump 
-           {    char *next = s+1;
-                if (s[1]=='i') next=s+2;
-                else if (s[1]=='p') { 
-                   next = s+2;
+           {    char d = 0;
+                char p = 0;
+                char *next = s+1;
+                int len = 32;
+                int adr = pcreg;
+                if (*next=='i') { next++; d='i';
+                } 
+                if (*next=='p') { 
+                   p = 'p';
+                   next++;
                    if (next[0]) {
                       page =  getarg(next,&next);
                    }
                 }
                 if (next[0]) {
-                   int adr = getarg(next,&next);
-                   int len = 32;
+                   adr = getarg(next,&next);
+#ifdef USE_MMU
+                   adr -= adr &0xf;
+                   if (p=='p') adr -= adr&0x1fff;
+#endif
                    if (next[0]) {
-                      len =  getarg(next,&next);
+                       len = getarg(next,&next);
                    }
-                   if (s[1]=='i') {
-                     Word end = adr + len;
-                     while(adr < end) {
+                }
+                for(; len > 0 ; len-=16,adr+=16) {
+                    Byte *phyadr = 0;
 #ifdef USE_MMU
-                        Byte *phyadr = mem0(phymem,adr,mmu);
+                    if (p=='p') {
+                        phyadr  = phymem + (page * 0x2000 + adr);
                         prog = (char*)phyadr - adr  ;
-                        if (phyadr > phymem+memsize) goto restart;
-#endif
-                        int len = adr+16<end? 16 : end-adr -1 ;
-                        adr = disasm(adr,adr+len);
-                      }
-                   } else {
-#ifdef USE_MMU
-                     for(int i=0; len > 0 ; i+=16, len-=16) {
-                        if (s[1]=='p') {
-                            int phy = page * 0x2000 + adr + i;
-                            if (phy > rommemsize) goto restart;
-                            hexadump(phymem+phy,len>16?16:len,adr+i,16);
-                        } else {
-                            Byte *phyadr = mem0(phymem,adr+i,mmu);
-                            if (phyadr > phymem+rommemsize) goto restart;
-                            hexadump(phyadr,len>16?16:len,adr+i,16);
-                        }
-                     }
+                    } else {
+                        phyadr = mem0(phymem,adr,mmu);
+                        prog = (char*)phyadr - adr  ;
+                    }
+                    if (phyadr > phymem+memsize) goto restart;
 #else
-                     for(int i=0; len > 0 ; i+=16, len-=16) {
-                        hexadump(mem+adr+i,len>16?16:len,adr+i,16);
-                     }
+                    phyadr = mem+adr;
+                    if (phyadr > mem+0xffff) goto restart;
 #endif
-                   }
-                } else 
-                   disasm(pcreg,pcreg+32);
+                    if (d=='i') {
+                        adr = disasm(adr,adr+(len>16?16:len));
+                    } else {
+                        hexadump(phyadr,len>16?16:len,adr,16);
+                    }
+                }
                 goto restart;
             }
         case 'L':
@@ -300,6 +328,7 @@ restart:
                         int i=1; while(s[i]==' ') i++;
                         logfile = fopen(s + i, "w");
                 }
+                goto restart;
                 break;
         case 'S':
                 if (infile)
@@ -309,6 +338,7 @@ restart:
                         int i=1; while(s[i]==' ') i++;
                         infile = fopen(s + i, "r");
                 }
+                goto restart;
                 break;
         case 'h':
         case '?':
@@ -323,6 +353,7 @@ restart:
                         fclose(xfile);
                         xfile = 0;
                 }
+                goto restart;
                 break;
         case '0':
         case '1':
@@ -336,6 +367,7 @@ restart:
                         if ( *drv == 0 ) { printf("can't open %s\n", &s[i]); }
                 }
                 }
+                goto restart;
                 break;
         case 'U':
                 if (xfile)
@@ -354,6 +386,7 @@ restart:
                 acknak = 21;
                 rcvdnak = EOF;
                 blocknum = 1;
+                goto restart;
                 break;
         case 'D':
                 if (xfile)
@@ -371,6 +404,7 @@ restart:
                 xidx = 0;
                 acknak = 21;
                 blocknum = 1;
+                goto restart;
                 break;
         case 'R':
                 pcreg = (mem[0xfffe] << 8) + mem[0xffff];
@@ -382,6 +416,7 @@ restart:
                 attention = escape = 1;
                 // we have to reload romfile
                 // readimage();
+                goto restart;
                 break;
         default:  // one step trace
                 trskip = 1;
@@ -412,9 +447,9 @@ void setbreak(int adr, int count) {
 }
 
 /*
- * length call instruction
+ * length of call instruction
  *
- * if call instruction, put temporary break on next instruction
+ * if next instruction is call or swi, put temporary break after the call instruction
  *   (ignoring page boundary, sorry)
  */
 int nexti(void) {
