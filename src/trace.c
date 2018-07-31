@@ -291,7 +291,7 @@ restart:
                    adr = getarg(next,&next);
 #ifdef USE_MMU
                    adr -= adr &0xf;
-                   if (p=='p') adr -= adr&0x1fff;
+                   // if (p=='p') adr -= adr&0x1fff;
 #endif
                    if (next[0]) {
                        len = getarg(next,&next);
