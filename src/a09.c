@@ -1545,6 +1545,12 @@ getoptions(int c,char*v[])
      } else if(strcmp(v[i],"-l")==0) {
        listname=v[i+1];
        i+=2;
+     } else if(strcmp(v[i],"-D")==0) {
+       struct symrecord * p;
+       p=findsym(v[i+1]);
+       p->value = 1;
+       p->cat = 0;
+       i+=2;
      } else if(strcmp(v[i],"-I")==0) {
        struct incl *j = (struct incl *)malloc(sizeof(struct incl));
        j->name = v[i+1];

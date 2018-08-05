@@ -205,7 +205,7 @@ if(vdiskdebug&2) { printf("checkf \""); putOs9str(name,0); printf("\"\n"); }
         while(*p==' ') p++;
     }
     char *name1 = addCurdir(name,pd,curdir);
-    if (name1!=name && name1!=path) free(name);
+    if (name1!=name && path!=name) free(name);
     if (name1==0) return 0;
     pd->name = name1;
 if(vdiskdebug&2) {

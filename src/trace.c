@@ -87,6 +87,7 @@ int getarg(char *buf, char** next) {
      int value = 0;
      char *b = buf;
      if (next==0) next = &b;
+     *next = buf;
      value=getterm(*next,next);
      for(;**next;) {
          if  ( **next == '+' ) {

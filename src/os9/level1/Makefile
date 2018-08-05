@@ -9,8 +9,10 @@ A09 = ../../a09 -I $(OS9SRC)/defs/
 MOD =  pdisk init os9p1 os9p2 ioman pipe piper rbf scf term pty d0 d1 vrbf v0 clock shell dir mdir sysgo shell
 
 all : ${MOD}
+	cd cmds; make
 
 clean : 
+	cd cmds; make clean
 	rm -f $(MOD) *.lst krn.asm 
 
 LST = -l $@.lst

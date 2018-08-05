@@ -1453,9 +1453,9 @@ char *suffix;
 
   offset = prog[pc+1];
   if (offset < 127 )
-	 disp   = pc + 2 + offset;
+	 disp   = pc + 2 + offset + adoffset;
   else
-	 disp   = pc + 2 - (256 - offset);
+	 disp   = pc + 2 - (256 - offset + adoffset);
   fprintf(fp,"%0.2X %0.2X       %s%s       $%0.4X",
 	code, offset, suffix, op->name, disp);
   return op->bytes;

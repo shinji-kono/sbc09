@@ -16,9 +16,9 @@ all :
 	cd src/os9 ; make os9v2.rom
 
 lv1 : all
-	src/v09 -rom src/os9/os9v1.rom
+	src/v09  -rom src/os9/os9v1.rom -v src/os9/level1
 lv2 : all
-	src/v09c -rom src/os9/os9v2.rom
+	src/v09c -rom src/os9/os9v2.rom -v src/os9/level2
 
 clean :
 	cd src ; make realclean

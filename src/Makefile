@@ -44,7 +44,7 @@ a09.o : a09.c
 	$(CC) -c $(CFLAGS) $(V09FLAGS) $< 
 
 v09.o: v09.c 
-	$(CC) -c $(CFLAGS) $(V09FLAGS) $<
+	$(CC) -c $(CFLAGS) -DUSE_VDISK $(V09FLAGS) $<
 
 d09 : d09.c
 	$(CC) -Wno-format-security $(CFLAGS) $(V09FLAGS) $< -o $@
