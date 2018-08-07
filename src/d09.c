@@ -101,7 +101,7 @@ Opcode optable[] = {
   { "ROR  ",  6,  2,	D_Direct,    NULL },	 /* 0x06 */
   { "ASR  ",  6,  2,	D_Direct,    NULL },	 /* 0x07 */
   { "LSL  ",  6,  2,	D_Direct,    NULL },	 /* 0x08 */
-  { "ROR  ",  6,  2,	D_Direct,    NULL },	 /* 0x09 */
+  { "ROL  ",  6,  2,	D_Direct,    NULL },	 /* 0x09 */
   { "DEC  ",  6,  2,	D_Direct,    NULL },	 /* 0x0a */
   { "?????",  0,  1,	D_Illegal,   NULL },	 /* 0x0b */
   { "INC  ",  6,  2,	D_Direct,    NULL },	 /* 0x0c */

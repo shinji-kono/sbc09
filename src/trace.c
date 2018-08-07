@@ -311,6 +311,7 @@ restart:
                     if (phyadr > phymem+memsize) goto restart;
 #else
                     phyadr = mem+adr;
+                    prog = (char*)phyadr - adr  ;
                     if (phyadr > mem+0xffff) goto restart;
 #endif
                     if (d=='i') {
