@@ -174,7 +174,7 @@ struct oprecord optable[]={
   {"SBCA",7,0x82},{"SBCB",7,0xc2},
   {"SEC",1,0x1a01},{"SEF",1,0x1a40},{"SEI",1,0x1a10},
   {"SEIF",1,0x1a50},{"SET",13,15},
-  {"SETDP",13,14},{"SEV",1,0x1a02},{"SEX",0,0x1d},
+  {"SETDP",13,14},{"SEV",1,0x1a02},{"SEX",0,0x1d},{"SPC",13,20},
   {"STA",7,0x87},{"STB",7,0xc7},{"STD",8,0xcd},
   {"STS",9,0x10cf},{"STU",8,0xcf},{"STX",8,0x8f},
   {"STY",9,0x108f},

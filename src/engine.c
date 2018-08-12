@@ -56,7 +56,7 @@ static void SETBYTE1(Word a,Byte n) {
 #else
 
 int paddr(Word adr, Byte *immu) { 
-    if ((adr&0xfe00)==(IOPAGE&0xfe00)) return memsize-0x10000+adr;
+    if ((adr&0xfe00)==(IOPAGE&0xfe00)) return 0x38*0x2000+adr;
     return  (immu[ (adr) >> 13 ] <<13 ) + ((adr) & 0x1fff ); 
 }
 

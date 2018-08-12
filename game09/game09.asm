@@ -20,18 +20,21 @@ edition  set   1
 dpage    rmb   $96
 
 DP00     equ     $00
-DP04     equ     $04          variabble base A-Z (until DP36)
+VAROFS   equ     $04          variabble base 'A'-'Z' until $36
+DP38     equ     $38          variable end
 DP42     equ     $42          program copy pointer
-DP46     equ     $46
-DP4A     equ     $4A          input lineno
+DP44     equ     $44          variable 'a'-'z' until $76
+DP48     equ     $48          """ 
+DP4A     equ     $4A          "#" next line no
 DP4B     equ     $4B
-DP4E     equ     $4E
+DP4E     equ     $4E          "%"
 DP4F     equ     $4F
-DP50     equ     $50          program top
+DP50     equ     $50          "&" program top
 DP52     equ     $52
 DP58     equ     $58          program max
+DP7C     equ     $7C          "=" program current end
 DP7E     equ     $7E          program current end
-DP82     equ     $82
+DP82     equ     $82          "@"
 DP83     equ     $83
 DP84     equ     $84
 DP86     equ     $86          input line (except lineno)
@@ -56,11 +59,12 @@ size     equ   .
 
 name    fcs         "Game09"
         fcb   edition
+coldstart
 start   * clrb
         * os9         F$Exit
 LC000   BRA         LC005
 LC002   NOP  
-LC003   BRA         LC014
+LC003   BRA         warmst
 LC005   TFR         U,D
         TFR         A,DP
         STU         <DPWORK
@@ -70,9 +74,9 @@ LC005   TFR         U,D
         STX         <$50
         LDA         #$FF
         STA         ,X
-LC014   LDU         <DPWORK
-        LEAX        DP04,U
-        STX         <DP04
+warmst  LDU         <DPWORK
+        LEAX        VAROFS,U
+        STX         <VAROFS
         LEAX        linebuf-1,U
         STX         <lineb0
         LEAX        1,X
@@ -87,18 +91,18 @@ LC014   LDU         <DPWORK
         STX         <$58
 LC020   LDA         #$FF
         STA         <$8C
-LC024   LDS         <DPSTK
+GAMETP  LDS         <DPSTK
         LDU         <DPWORK
         LEAU        linebuf,U        user stack
-        LEAX        >LC63F,PCR
-        LBSR        LC165
-LC032   LBSR        LC370
+        LEAX        >PRMPT,PCR
+        LBSR        LPRNT
+LC032   LBSR        GETCLN
         BCS         LC06D
         STX         <$42
         LBSR        LC1D3
-        BEQ         LC024
+        BEQ         GAMETP
 LC03E   BSR         LC09C
-LC040   BMI         LC024
+LC040   BMI         GAMETP
         STX         <$42
 LC044   LEAX        +$02,X
         LDA         ,X+
@@ -115,7 +119,7 @@ LC05B   BSR         LC0A8
 LC05F   LDX         <$42
         STX         <$84
         BSR         LC0A0
-        BMI         LC024
+        BMI         GAMETP
         CMPX        <$84
         BEQ         LC03E
         BRA         LC044
@@ -127,7 +131,7 @@ LC06D   STX         <$86
 LC077   BSR         LC09C         listing
 LC079   LBSR        LC397
         TST         ,X
-        BMI         LC024
+        BMI         GAMETP
         BSR         LC087
         LBSR        LC173
         BRA         LC079
@@ -135,7 +139,7 @@ LC087   LDD         ,X++
         PSHS        X
         LBSR        LC443
         PULS        X
-        LBRA        LC165
+        LBRA        LPRNT
 LC093   LDX         <$42
         LEAX        +$02,X
 LC097   TST         ,X+
@@ -201,7 +205,7 @@ LC10E   LDB         ,Y+
         STB         ,X+
         BNE         LC10E
 LC114   LBRA        LC032
-LC117   LBRA        LC024
+LC117   LBRA        GAMETP
 LC11A   LDX         <DPWORK
         LEAX        $8F,X
         TST         <$8C
@@ -240,7 +244,7 @@ LC159   FDB          10000
         FDB             10
         FDB              1
         FDB              0
-LC165   CLRA 
+LPRNT   CLRA 
 LC166   STA         <$94
 LC168   LDB         ,X+
         CMPB        <$94
@@ -248,7 +252,7 @@ LC168   LDB         ,X+
         LBSR        LC412
         BRA         LC168
 LC173   LBSR        LC650
-        LBCS        LC024
+        LBCS        GAMETP
         RTS  
 LC17B   CMPA        #$20
         BEQ         LC1D1
@@ -310,7 +314,7 @@ LC1EC   LDA         ,X+
         BEQ         LC1E7
         CMPA        #$3D
         BNE         LC1EC
-LC1F6   LBSR        LC521
+LC1F6   LBSR        EXPR
 LC1F9   PSHS        B
         LDB         ,X
         BITB        #$DF
@@ -330,7 +334,7 @@ LC218   CMPB        #$3F
         BNE         LC22E
         PSHS        X
         STB         <$8C
-        LBSR        LC5D8
+        LBSR        GETLIN
         BSR         LC1F6
         PULS        X
         LEAX        +$01,X
@@ -373,7 +377,7 @@ LC251   fdb         LC6EC-LC251       049b      "
 LC269   BSR         LC279
         LEAY        D,Y
         RTS  
-LC26E   CMPA        #$28
+LC26E   CMPA        #$28             A(I)   pointer of word array
         BNE         LC292
         BSR         LC279
         LSLB 
@@ -396,7 +400,7 @@ LC289   LDA         ,X+
 LC292   ANDB        #$3F
         CLRA 
         LSLB 
-        ADDD        <DP04
+        ADDD        <VAROFS
         TFR         D,Y
         RTS  
 LC29C   PSHU        B,A
@@ -407,7 +411,7 @@ LC29C   PSHU        B,A
         DECB 
         BNE         LC2AB
 LC2A9   LEAX        +$01,X
-LC2AB   LBSR        LC521
+LC2AB   LBSR        EXPR
         PULU        Y
         EXG         D,Y
         PSHU        Y,B,A
@@ -516,7 +520,7 @@ LC364   LDB         ,X
         RTS  
 LC36D   ANDCC       #$FE
         RTS  
-LC370   LBSR        LC5D8
+GETCLN  LBSR        GETLIN
 LC373   BSR         LC364
         BCC         LC396
         CLRA 
@@ -602,7 +606,7 @@ LC40B   RTS
 LC40C   CMPB        #$24
         BNE         LC415
         PULS        B,A
-LC412   LBRA        LC64A
+LC412   LBRA        OUTC1
 LC415   CMPB        #$3F
         BNE         LC449
         LDB         +$01,X
@@ -615,7 +619,7 @@ LC424   STB         <$8E
         ADDA        <$8E
         BMI         LC430
         BSR         LC3B1
-LC430   LBRA        LC165
+LC430   LBRA        LPRNT
 LC433   TSTA 
         LBPL        LC11A
         LBSR        LC4F3
@@ -634,7 +638,7 @@ LC449   CMPB        #$3D
         STX         <$4A
         LBSR        LC09C
         STX         <$50
-        LBRA        LC024
+        LBRA        GAMETP
 LC45E   PULS        PC,B,A
 LC460   CMPB        #$3E
         BNE         LC46C
@@ -724,12 +728,12 @@ LC4F9   LBSR        LC397
         STY         ,S
         CMPX        <linetop
         BNE         LC519
-        LBSR        LC165
+        LBSR        LPRNT
         BRA         LC51C
 LC519   LBSR        LC087
-LC51C   LBRA        LC024
+LC51C   LBRA        GAMETP
 LC51F   LEAX        +$01,X
-LC521   LBSR        LC373
+EXPR   LBSR        LC373
         BCS         LC532
         LBRA        LC23F
 LC529   BSR         LC51F        -
@@ -774,7 +778,7 @@ LC56E   CMPB        #$3F
         BEQ         LC582
         PULS        B,A
         LBSR        LC433
-        LBRA        LC165
+        LBRA        LPRNT
 LC57E   LDB         ,S
         BSR         LC584
 LC582   PULS        B,A
@@ -794,7 +798,7 @@ LC598   ADDB        #$30
         LBRA        LC412
 LC5A1   CLRA 
         BSR         LC5BD
-        LBCC        LC64D
+        LBCC        GETC1
 LC5A4   PSHS        B
         BSR         LC5BD
         PSHU        B
@@ -826,8 +830,8 @@ LC5D1   RTS
 LC5D2   ANDCC       #$FE
         RTS  
 LC5D5   LBSR        LC397
-LC5D8   LDB         #$3A
-        LBSR         LC64A
+GETLIN  LDB         #$3A
+        LBSR         OUTC1
         LDX        <linetop
         TST         <$8C
         BNE         LC5F2
@@ -836,8 +840,8 @@ LC5D8   LDB         #$3A
         LBSR        LC443
         LDB         #$20
         STB         -$01,X
-        BSR         LC64A
-LC5F2   BSR         LC64D
+        BSR         OUTC1
+LC5F2   BSR         GETC1
         CMPB        #$08
         BEQ         LC634
         CMPB        #$0D
@@ -850,7 +854,7 @@ LC5F2   BSR         LC64D
         BNE         LC5F2
         LEAX        -$01,X
         LDB         #$08
-        BSR         LC64A
+        BSR         OUTC1
         BRA         LC5F2
 LC611   TST         <$8C
         BNE         LC626
@@ -860,7 +864,7 @@ LC611   TST         <$8C
         BCC         LC626
 LC61F   COM         <$8C
         LBSR        LC39B
-        BRA         LC5D8
+        BRA         GETLIN
 LC626   LDD         <$88
         ADDD        <$8A
         STD         <$88
@@ -871,14 +875,14 @@ LC634   LEAX        -$01,X
         CMPX        <lineb0
         BNE         LC5F2
         STB         <$8C
-        LBRA         LC5D8
-LC63F
+        LBRA         GETLIN
+PRMPT
         FCB         $D,$A
         FCC         "*READY"
         FCB         $D,$A,0
 
-LC64A   LBRA        OUTCH
-LC64D   LBRA        GETCH
+OUTC1   LBRA        OUTCH
+GETC1   LBRA        GETCH
 LC650   LBRA        SENSE
 
 LC653   CMPA        #$2E      EXBOP
@@ -939,7 +943,7 @@ LC6B3   PSHU        B,A
 LC6C3   LDD         ,Y
         JSR         D,Y
         PULS        PC,U,X
-LC6C9   LBSR        LC521
+LC6C9   LBSR        EXPR
 LC6CC   PSHS        B
         LDB         ,X
         BITB        #$DF

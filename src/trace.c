@@ -142,7 +142,7 @@ void printhelp(void)
 }
 
                
-void setbreak(int adr,int count) ;
+void setbreak(int adr,int count, int page) ;
 int nexti(void);
 
 void do_escape(void) {
@@ -225,20 +225,27 @@ restart:
                 stkskip = sreg + 2;
                 attention = escape = 1;
                 break;
-        case 'b':   // set break point
-                if (s[1]) {
-                   char *next;
+        case 'b': { // set break point
+                char *next = s;
+                int page = -1;
+                if (next[1]=='p') {
+                   next++;
+                   if (next[1]) 
+                      page = getarg(next+1,&next);
+                }
+                if (next[1]) {
                    int count = 0;
-                   int adr = getarg(s+1,&next);
+                   int adr = getarg(next+1,&next);
                    if (next[0]) {
                       count = getarg(next,&next);
                    }
-                   setbreak(adr,count);
+                   setbreak(adr,count,page);
                 } else {
-                   setbreak(pcreg,0);
+                   setbreak(pcreg,0,page);
                 }
                 bpskip = -1;
                 goto restart;
+             }
         case 'B':   // break point list
                 for(BPTR bp = breakpoint; bp ; bp = bp->next) {
 #ifdef USE_MMU
@@ -291,8 +298,8 @@ restart:
                 if (next[0]) {
                    adr = getarg(next,&next);
 #ifdef USE_MMU
-                   adr -= adr &0xf;
-                   // if (p=='p') adr -= adr&0x1fff;
+                   if (d!='i')   // disassembler may fail on page boundary
+                       adr -= adr &0xf;
 #endif
                    if (next[0]) {
                        len = getarg(next,&next);
@@ -311,11 +318,10 @@ restart:
                     if (phyadr > phymem+memsize) goto restart;
 #else
                     phyadr = mem+adr;
-                    prog = (char*)phyadr - adr  ;
                     if (phyadr > mem+0xffff) goto restart;
 #endif
                     if (d=='i') {
-                        adr = disasm(adr,adr+(len>16?16:len));
+                        adr = disasm(adr,adr+(len>16?16:len))-16;
                     } else {
                         hexadump(phyadr,len>16?16:len,adr,16);
                     }
@@ -433,14 +439,17 @@ restart:
 /*
  *     keep break point / watch point in a list
  */
-void setbreak(int adr, int count) {
+void setbreak(int adr, int count, int page) {
   BPTR bp = calloc(1,sizeof(BP));
   bp->count = count;
   bp->laddr = adr;
   bp->address = paddr(adr,mmu);
 #ifdef USE_MMU
+  if (page!=-1) {
+      bp->address = page*0x2000 + adr;
+  } 
   if (bp->address >= memsize) { free(bp); return; }
-  bp->watch = *mem0(phymem,adr,mmu);
+  bp->watch = phymem[bp->address];
 #else
   bp->watch = mem[adr];
 #endif
@@ -501,7 +510,7 @@ int nexti(void) {
             }
             break;
     }
-    if (ofs) setbreak(pcreg+ofs,-1);
+    if (ofs) setbreak(pcreg+ofs,-1,-1);
     return ofs;
 }
 

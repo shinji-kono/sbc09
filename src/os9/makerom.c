@@ -32,6 +32,9 @@
  *        0xffd0 - 0xffef   boot code
  *        0xfff0 - 0xffff   intr vector
  *         ... next few blocks as extended ROM
+ *         lv2 6809 memory check routine destroys 0x200 on page 0x40
+ *                  sta     >-$6000,x
+ *         avoid 0x200
  *
  */
 
@@ -329,9 +332,11 @@ main(int ac, char *av[])
         if ( cur->ioflag ==0) continue; 
         bootsize += cur->size;
      }
+     bootsize += 0x300-2;    // to avoid 0x200 bombing
      fputc(bootsize>>8,romfile);
      fputc(bootsize&0xff,romfile);
      pos += 2;
+     for( int i = 0; i<0x300-2; i++) fputc(0xff,romfile);
      for(struct os9module *cur = root.next; cur ; cur = cur->next ) {
         if ( cur->ioflag ==0) continue; 
         cur->location = pos;

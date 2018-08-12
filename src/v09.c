@@ -58,8 +58,8 @@ void do_trace(FILE *tracefile)
  // ir=mem[pc++];
  // fprintf(tracefile,"i=%02x ",ir); if((ir&0xfe)==0x10) fprintf(tracefile,"%02x ",mem[pc]);else 
  // fprintf(tracefile,"   ");
- fprintf(tracefile,"x=%04x y=%04x u=%04x s=%04x a=%02x b=%02x cc=%02x pc=",
-                   xreg,yreg,ureg,sreg,*areg,*breg,ccreg);
+ fprintf(tracefile,"x=%04x y=%04x u=%04x s=%04x a=%02x b=%02x cc=%02x dp=%02x pc=",
+                   xreg,yreg,ureg,sreg,*areg,*breg,ccreg,dpreg);
  fp = tracefile;
  disasm(pc,pc);
 } 
@@ -103,25 +103,25 @@ read_image()
   * In case of Coco, there is no ROM (switched out after boot )
   *    0x00000-0x0fdff    normal mem
   *    0x0fe00-0x0ffff    ram fixed address ram including io
-  *    0x10000-0x7ffff    ram (512Kb memory current implementation)
-  * it should have 2MB memory
-  *    0x10000-0xfffff    ram
-  *  >0x100000            lapround
+  *    0x10000-0x1fffff    ram (2MB memory )
+  *  >0x200000            lapround
   *
   * discless boot
-  *    rom image will be copyied from 0xed00-0x1xxxx
-  *    boot copies 0x10000-0x1xxxx to os9's boot memory 
+  *    rom image will be copyied from 0x7eed00-0x7fxxxx (all ram)
+  *    boot copies 0x800000-0x8xxxx to os9's boot memory  (ususally done by rel.asm )
+  *        (original system copies it from fd or hd)
+  *    after that 0x800000-0x8xxxx will be all free
   */
- phymem = malloc(memsize + len - 0x2000);
- rommemsize = memsize + len - 0x2000;
- mem    = phymem + memsize - 0x10000 ;
+ phymem = malloc(memsize );
+ rommemsize = memsize ;
+ mem    = phymem + 0x38*0x2000;
  mmu = &mem[0xffa0];
  prog = (char*)mem;
  if (romstart==0x8000) {
-     // romstart = memsize - 0x10000 + 0xed00 ;
      romstart = memsize ;  // full 512kb mem
  }
- fread(mem+ 0xe000,len,1,image);
+ fread(mem+  0xe000,len,1,image);
+ mem[0xff90] = 0;
  mem[0xffa7] = 0x3f;
 #else
  if (romstart==0x8000) {
@@ -153,7 +153,7 @@ main(int argc,char *argv[])
  int i;
  int setterm = 1;
  timerirq = 2;   // use FIRQ default
- memsize = 512*1024;
+ memsize = 512*1024*4;      // full 2 mbute
  escchar='\x1d'; 
  tracelo=0;tracehi=0xffff;
  for(i=1;i<argc;i++) {
