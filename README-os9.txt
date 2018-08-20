@@ -98,7 +98,8 @@ v09/v09c feature
     Usage: v09 [-rom rom-image] [-t tracefile [-tl addr] [-nt][-th addr] ] [-e escchar] 
                [-0 diskImage0] [-1 diskImage1]
 
-    Usage: v09 [-rom rom-image] [-t tracefile [-tl addr] [-nt][-th addr] ] [-e escchar] 
+    with Coco MMU
+    Usage: v09c [-rom rom-image] [-t tracefile [-tl addr] [-nt][-th addr] ] [-e escchar] 
                [-0 diskImage0] [-1 diskImage1]
 
  -nt start with trace on
@@ -151,6 +152,17 @@ a09 Assembler for os9
 
       accepts some more chars in names such as $ . _
 
+
+os9 command
+-------------
+   src/os9/level1/cmds
+   src/os9/level2/cmds
+
+   game09   VTL interpreter on os9
+   sbc09    sbc09 emulator on os9
+       OS9: sbc09 ../../../examples_forth/kernel09
+
+   Todo ( program load command on game09 and forth )
 
 Links/References
 ================
