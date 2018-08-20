@@ -1,16 +1,15 @@
 ********************************************************************
-* Cmp - Binary file comparison utility
+* loop dummy loader
 *
 * $Id$
 *
 * Edt/Rev  YYYY/MM/DD  Modified by
 * Comment
 * ------------------------------------------------------------------
-*   1      2003/01/20  Boisy G. Pitre
-* Rewritten in assembly for size.
+*   1      2018/07/30  S. Kono
 
-         nam   Cmp
-         ttl   Binary file comparison utility
+         nam   Loop
+         ttl   Dummy loop
 
          ifp1
          use   defsfile

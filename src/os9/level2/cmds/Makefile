@@ -5,7 +5,7 @@ OBJ2 = mdir mfree proc procs reboot dmem pmap smap mmap
 
 OBJ1 = asm attr calldbg cmp config copy cputype date debug del deldir devs dir dir_cb dirsort  dump  echo edit \
     error free help ident irqs link list load login makdir pxd pwd procs prompt shellplus sleep tee touch tsmon unlink \
-    game09
+    game09 sbc09
 
 
 all : $(OBJ2) $(OBJ1)
@@ -18,6 +18,8 @@ clean :
 game09 :
 	$(A09) -l $@.lst  -o $@ ../../../../game09/$@.asm
 
+sbc09 :
+	$(A09) -l $@.lst  -o $@ $@.asm
 mdir :
 	$(A09) -l $@.lst  -o $@ $(SRC2)/$@.asm
 mfree :
