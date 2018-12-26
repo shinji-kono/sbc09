@@ -41,13 +41,12 @@ size     equ   .
 name     fcs   /Sbc09/
          fcb   edition
 
-start    
-         clr   <stdin
+start    clr   <stdin
          stx   <parmptr         save parameter pointer
          stu   <work            save parameter pointer
          lda   #READ.           read access mode
          os9   I$Open           open file
-         bcs   L0049            branch if error
+         lbcs   L0049            branch if error
          sta   <filepath        else save path to file
          stx   <parmptr         and updated parm pointer
 L001F    lda   <filepath        get path
@@ -88,8 +87,19 @@ l1       ldb   #$7e     * JMP
          puls  x,y
          jmp   $400
  
-Exit     clrb
-         os9   F$Exit
+Exit     lbsr        setecho
+*        ldx         <work
+*        leax        readbuff,x
+*        ldb         #1
+*        lbsr         getline
+*        lbsr         getpoll
+*        lda        <stdin        
+*        os9        I$Close      
+
+        clrb
+        os9        F$Exit
+*       no return
+
 
 iotbl
          fdb   getchar-iotbl            ; 0
@@ -102,9 +112,11 @@ iotbl
          fdb   xopenout-iotbl           ; $15
          fdb   xabortin-iotbl           ; $18
          fdb   xclosein-iotbl           ; $1B
-         fdb   xcloseout-iotbl          ; $21
-         fdb   delay-iotbl              ; $24
-         fdb   noecho-iotbl             ; $27
+         fdb   xcloseout-iotbl          ; $1E
+         fdb   delay-iotbl              ; $21
+         fdb   noecho-iotbl             ; $24
+         fdb   setecho-iotbl            ; $27
+         fdb   exit-iotbl               ; $2a
 iotblend
 
 L0049
@@ -210,25 +222,20 @@ RNSENSE
 
 getline                        * Input line at address in X, length in B.
         PSHS        A,B,X,Y
+        clr         ,s
 GETLN0
-        CLRA
-        TFR         D,Y
-        LDA         <stdin
+        ldy         ,s
+        clra   
         OS9         I$ReadLn
         BCS         GETLN0
         LEAY        -1,Y
-        TFR         Y,D
-*        LDA         D,X
-*        CMPA        #C$CR
-*        BNE         GETLN1
-*        LEAY        -1,Y
 GETLN1  STY         ,S
         PULS        A,B,X,Y,PC
 putline                        * Output string at address in X, length in B.
         PSHS        A,B,X,Y
         CLRA
         TFR         D,Y
-        LDA         <stdin
+        CLRA
         OS9         I$WritLn
         PULS        A,B,X,Y,PC
 xopenin
@@ -238,17 +245,27 @@ xclosein
 xcloseout
         RTS
 
-noecho  LDA         <stdin
-        CLRB
-        LDX         <work
-        leax        readbuff,X
+setecho lda          #1
+        bra          sss
+noecho  clra
+sss     leas         -128,s
+        leax        ,s
+        pshs         a
+        clra  
+        ldb          #SS.Opt
         OS9         I$GetStt
         bcs         err2
-        CLR         IT.EKO,X
-        CLRB         
+        LDA         ,s
+        STA         PD.EKO-PD.OPT,X
+setopts
+        ldb         #SS.Opt         
+        clra        
         OS9         I$SetStt
 err2
-        RTS
+        puls        a
+        leas        128,s
+        rts
+
 
 delay   PSHS        D,X  * address **$21** 
                          * On input the D register contains the number of timer 
@@ -256,7 +273,6 @@ delay   PSHS        D,X  * address **$21**
         TFR         D,X
         OS9         F$Sleep
         PULS        D,X,PC
-
 
 
          emod

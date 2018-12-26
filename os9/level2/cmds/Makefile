@@ -5,7 +5,7 @@ OBJ2 = mdir mfree proc procs reboot dmem pmap smap mmap
 
 OBJ1 = asm attr calldbg cmp config copy cputype date debug del deldir devs dir dir_cb dirsort  dump  echo edit \
     error free help ident irqs link list load login makdir pxd pwd procs prompt shellplus sleep tee touch tsmon unlink \
-    game09 sbc09 kernel09.s basic.s
+    game09 sbc09 cat kernel09.s basic.s
 
 
 all : $(OBJ2) $(OBJ1)
@@ -18,7 +18,9 @@ clean :
 game09 :
 	$(A09) -l $@.lst  -o $@ ../../../game09/$@.asm
 
-sbc09 :
+sbc09 : sbc09.asm
+	$(A09) -l $@.lst  -o $@ $@.asm
+cat :   cat.asm
 	$(A09) -l $@.lst  -o $@ $@.asm
 
 #   sbc09 cmds/kernel09.s
@@ -26,10 +28,10 @@ kernel09.s : ../../../examples_forth/kernel09
 	cp ../../../examples_forth/kernel09 kernel09.s
 
 #   sbc09 cmds/basic.s
-basic.asm : ../../../basic/basic.asm
+basic.asm : ../../../basic/basic.asm fixbasic.pl
 	perl fixbasic.pl  ../../../basic/basic.asm >  basic.asm
 
-basic.s : basic.asm
+basic.s : basic.asm 
 	$(A09) -l $@.lst  -s $@ basic.asm
 
 mdir :
