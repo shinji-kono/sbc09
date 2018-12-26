@@ -1,0 +1,19 @@
+* Main defsfile for OS-9 Level One V1
+*
+*
+* OS-9 Level and Version equates
+Level    equ   2
+OS9Vrsn  equ   2
+OS9Major equ   0
+OS9Minor equ   1
+CHECK_FOR_VALID_RAM equ 1      force ram check for non standard arch
+
+NOS9VER   equ OS9Vrsn 
+NOS9MAJ   equ OS9Major
+NOS9MIN   equ OS9Minor
+
+
+         use   ../os9/nitros9-code/defs/os9.d
+         use   ../os9/nitros9-code/defs/scf.d
+         use   ../os9/nitros9-code/defs/rbf.d
+

@@ -32,6 +32,7 @@ stdin    rmb   1
 chksum   rmb   1
 bcount   rmb   1
 adr      rmb   2
+work     rmb   2
 readbuff rmb   $100
          org   $400
 emstart  rmb   $e000-.
@@ -43,6 +44,7 @@ name     fcs   /Sbc09/
 start    
          clr   <stdin
          stx   <parmptr         save parameter pointer
+         stu   <work            save parameter pointer
          lda   #READ.           read access mode
          os9   I$Open           open file
          bcs   L0049            branch if error
@@ -82,7 +84,7 @@ l1       ldb   #$7e     * JMP
          adca  ,s
          std   ,u++
          cmpx  2,s
-         bne   l1
+         ble   l1
          puls  x,y
          jmp   $400
  
@@ -90,18 +92,19 @@ Exit     clrb
          os9   F$Exit
 
 iotbl
-         fdb   getchar-iotbl
-         fdb   putchar-iotbl
-         fdb   getline-iotbl
-         fdb   putline-iotbl
-         fdb   putcr-iotbl  
-         fdb   getpoll-iotbl
-         fdb   xopenin-iotbl
-         fdb   xopenout-iotbl
-         fdb   xabortin-iotbl
-         fdb   xclosein-iotbl
-         fdb   xcloseout-iotbl
-         fdb   delay-iotbl
+         fdb   getchar-iotbl            ; 0
+         fdb   putchar-iotbl            ; 3
+         fdb   getline-iotbl            ; 6
+         fdb   putline-iotbl            ; 9
+         fdb   putcr-iotbl              ; $C
+         fdb   getpoll-iotbl            ; $F
+         fdb   xopenin-iotbl            ; $12
+         fdb   xopenout-iotbl           ; $15
+         fdb   xabortin-iotbl           ; $18
+         fdb   xclosein-iotbl           ; $1B
+         fdb   xcloseout-iotbl          ; $21
+         fdb   delay-iotbl              ; $24
+         fdb   noecho-iotbl             ; $27
 iotblend
 
 L0049
@@ -233,6 +236,18 @@ xopenout
 xabortin
 xclosein
 xcloseout
+        RTS
+
+noecho  LDA         <stdin
+        CLRB
+        LDX         <work
+        leax        readbuff,X
+        OS9         I$GetStt
+        bcs         err2
+        CLR         IT.EKO,X
+        CLRB         
+        OS9         I$SetStt
+err2
         RTS
 
 delay   PSHS        D,X  * address **$21** 

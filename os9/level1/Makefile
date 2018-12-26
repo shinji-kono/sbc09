@@ -4,7 +4,7 @@ SRCDIR = $(OS9SRC)/level1/modules
 SRCCMD = $(OS9SRC)/level1/cmds
 SRCDIR2 = $(OS9SRC)/level2/modules
 
-A09 = ../../a09 -I $(OS9SRC)/defs/
+A09 = ../../src/a09 -I $(OS9SRC)/defs/
 
 MOD =  pdisk init os9p1 os9p2 ioman pipe piper rbf scf term pty d0 d1 vrbf v0 clock shell dir mdir sysgo shell
 

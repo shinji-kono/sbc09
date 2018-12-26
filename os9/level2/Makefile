@@ -3,7 +3,7 @@ SRCDIR=$(OS9SRC)/level2/modules
 SRCCMD=$(OS9SRC)/level1/cmds
 SRCCMD2=$(OS9SRC)/level2/cmds
 
-A09 = ../../a09 -I $(OS9SRC)/defs/
+A09 = ../../src/a09 -I $(OS9SRC)/defs/
 
 ALL = ioman pdisk init os9p1 os9p2 os9p3_perr os9p4_regdump pipe pipeman pipeman_named piper rbf scf term pty d0 d1 clock vector boot shell dir mdir sysgo v0 vrbf
 

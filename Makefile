@@ -12,16 +12,15 @@
 
 all :
 	cd src ; make
-	cd src/os9 ; make os9v1.rom
-	cd src/os9 ; make os9v2.rom
+	cd os9 ; make 
 
 lv1 : all
-	src/v09  -rom src/os9/os9v1.rom -v src/os9/level1
+	src/v09  -rom os9/os9v1.rom -v os9/level1 -0 os9/OS9.dsk -1 os9/WORK.dsk
 lv2 : all
-	src/v09c -rom src/os9/os9v2.rom -v src/os9/level2
+	src/v09c -rom os9/os9v2.rom -v os9/level2 -0 os9/OS9.dsk -1 os9/WORK.dsk
 
 clean :
 	cd src ; make realclean
-	cd src/os9 ; make clean
-	cd src/os9/level1 ; make clean
-	cd src/os9/level2 ; make clean
+	cd os9 ; make clean
+	cd os9/level1 ; make clean
+	cd os9/level2 ; make clean

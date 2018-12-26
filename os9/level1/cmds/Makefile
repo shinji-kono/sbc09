@@ -1,29 +1,25 @@
 SRC2  = ../../nitros9-code/level2/cmds
 SRC1  = ../../nitros9-code/level1/cmds
 
-OBJ2 = mdir mfree proc procs reboot dmem pmap smap mmap
+OBJ2 = mdir mfree proc 
 
 OBJ1 = asm attr calldbg cmp config copy cputype date debug del deldir devs dir dir_cb dirsort  dump  echo edit \
-    error free help ident irqs link list load login makdir pxd pwd procs prompt shellplus sleep tee touch tsmon unlink \
-    game09 sbc09
-
+    error free help ident irqs link list load login makdir pxd pwd procs prompt shellplus sleep tee touch tsmon unlink game09
 
 all : $(OBJ2) $(OBJ1)
 
-A09 = ../../../a09
+A09 = ../../../src/a09 -I ../
 
 clean :
 	rm -rf *.lst $(OBJ2) $(OBJ1)
 
 game09 :
-	$(A09) -l $@.lst  -o $@ ../../../../game09/$@.asm
+	$(A09) -l $@.lst  -o $@ ../../../game09/$@.asm
 
-sbc09 :
-	$(A09) -l $@.lst  -o $@ $@.asm
 mdir :
-	$(A09) -l $@.lst  -o $@ $(SRC2)/$@.asm
+	$(A09) -l $@.lst  -o $@ $(SRC1)/$@.asm
 mfree :
-	$(A09) -l $@.lst  -o $@ $(SRC2)/$@.asm
+	$(A09) -l $@.lst  -o $@ $(SRC1)/$@.asm
 proc :
 	$(A09) -l $@.lst  -o $@ $(SRC2)/$@.asm
 procs :
@@ -31,12 +27,6 @@ procs :
 reboot :
 	$(A09) -l $@.lst  -o $@ $(SRC2)/$@.asm
 smap :
-	$(A09) -l $@.lst  -o $@ $(SRC2)/$@.asm
-mmap :
-	$(A09) -l $@.lst  -o $@ $(SRC2)/$@.asm
-pmap :
-	$(A09) -l $@.lst  -o $@ $(SRC2)/$@.asm
-dmem :
 	$(A09) -l $@.lst  -o $@ $(SRC2)/$@.asm
 
 asm :
