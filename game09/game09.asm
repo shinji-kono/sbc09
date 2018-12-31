@@ -29,14 +29,14 @@ DP4A     equ     $4A          "#" next line no
 DP4B     equ     $4B
 DP4E     equ     $4E          "%"
 DP4F     equ     $4F
-DP50     equ     $50          "&" program top
+DP50     equ     $50          "&" program end
 DP52     equ     $52
 DP58     equ     $58          program max
-DP7C     equ     $7C          "=" program current end
-DP7E     equ     $7E          program current end
+DP7C     equ     $7C          
+DP7E     equ     $7E          "=" program top
 DP82     equ     $82          "@"
 DP83     equ     $83
-DP84     equ     $84
+DP84     equ     $84          rvalue pointer
 DP86     equ     $86          input line (except lineno)
 DP88     equ     $88
 DP8A     equ     $8A
@@ -54,7 +54,7 @@ lineb9b  rmb     2      $A0
 lineend  rmb     2      $A2
 ustack   rmb     128
 linebuf  rmb     252
-program  rmb     $2000
+program  rmb     $6000
 size     equ   .
 
 name    fcs         "Game09"
@@ -287,7 +287,7 @@ LC1B0   CMPA        #$5C
         BRA         LC1D3
 LC1B9   STX         <$84
         BSR         LC1EC
-        LBSR        LC39F
+        LBSR        LVALUE
         BSR         LC173
         LDX         <$4A
         BNE         LC1D7
@@ -309,7 +309,21 @@ LC1E0   LDY         <$42
         PULS        PC,B,A
 LC1E7   LDA         #$3D
         LBRA        LC4F9
-LC1EC   LDA         ,X+
+LC1EC   CMPA        #$3D
+        BNE         LC1ED
+*  = assignment ( GAME code top switch )
+        leax        2,x
+        lda         ,x
+        lbsr        expr
+        std         <$7E
+        tfr         d,x
+lploop  ldd         ,x+
+        cmpd        #$00ff
+        bne         lploop
+lpend   stx         <$50
+        ldd         <$7e
+        lbra        warmst
+LC1ED   LDA         ,X+
         BITA        #$DF
         BEQ         LC1E7
         CMPA        #$3D
@@ -547,7 +561,7 @@ LC397   LDB         #$0D
         BSR         LC39D
 LC39B   LDB         #$0A
 LC39D   BRA         LC412
-LC39F   PSHS        B,A
+LVALUE   PSHS        B,A
         LDA         #$01
         STA         <$8C
         LDX         <$84
@@ -584,7 +598,7 @@ LC3E1   LEAU        +$04,U
         RTS  
 LC3E4   CMPB        #$26
         BNE         LC3FA
-LC3E8   LDB         +$01,X
+        LDB         +$01,X
         CMPB        #$3D
         BNE         LC3FA
         LDD         ,S++
@@ -669,7 +683,7 @@ LC494   LEAX        +$03,X
         CLR         <$8C
         LBSR        LC373
         BCS         LC4A0
-        LDD         #LC3E8
+        LDD         #1000
 LC4A0   STD         <$88
         LDB         ,X
         CMPB        #$2C
@@ -926,9 +940,22 @@ LC69A   CMPA        ,X+
         STX         +$03,S
 LC6A2   BITA        #$DF
         BEQ         LC6B0
-        CMPA        #$2C
+        CMPA        #$2C     ,
         BEQ         LC6AE
-        BSR         LC6C9
+        CMPA        #$22     "
+        BNE         LCXXX
+        leax        1,x
+        PSHS        X
+        LDA         #$22
+LXX1    tst        ,x
+        beq         LXX2
+        cmpa       ,x+
+        bne         LXX1
+        clr         -1,x
+        leax        1,x
+LXX2    PULS        D
+        BRA         LC6B3
+LCXXX   BSR         LC6C9
         BRA         LC6B3
 LC6AE   LEAX        +$01,X
 LC6B0   LDD         #$FFFF
@@ -1009,6 +1036,8 @@ OPCMD               FCB 'A','T',2 START LINE,STEP
         FDB CAUTO-*
         FCB 'R','N',3 RENUM first line no,inc,renum start
         FDB RENUM-*
+        FCB 'L','D',1 load file-name
+        FDB pload-*
         * FCB 'R','D',3 DISK READ address,track,sector
         * FDB GETDK-*
         * FCB 'W','R',3 DISK WRITE
@@ -1030,7 +1059,7 @@ LC762   STD         <$4A
         LDD         #$00A
 LC770   LDY         ,U++
         BPL         LC779
-        LDY         #LC3E8
+        LDY         #1000
 LC779   STY         ,X++
         LBSR        LC173
         LEAY        D,Y
@@ -1047,7 +1076,7 @@ LC791   STD         <$8A
         LDD         ,U
         BEQ         LC79E
         BPL         LC79C
-        LDD         #LC3E8
+        LDD         #1000
 LC79C   STD         <$88
 LC79E   CLR         <$8C
         RTS  
@@ -1068,6 +1097,47 @@ LC7B6   LDX         +$04,U
 SYSTEM  clrb
         os9         F$Exit  
         rts
+
+pload   pshs        a,x,y
+        ldx         ,u
+        lda         #1
+        os9         I$Open
+        bcs         ploaderr
+        sta         ,s
+ploadloop
+        lda         ,s
+        ldx         <DPWORK
+        leax        linebuf,x
+        ldy         #252
+        os9         I$ReadLn
+        bcs         ploaderr
+        lbsr        LC373
+        bcc         ploadloop
+        ldy         <$50                  
+        std         ,y++
+        lda         ,x+
+        cmpa        #$20
+        bne         ploaderr
+pl01    lda         ,x+
+        beq         pl02
+        cmpa        #$d
+        beq         pl02
+        cmpa        #$a
+        beq         pl02
+        sta         ,y+
+        bra         pl01
+pl02    clra
+        sta         ,y+
+        ldd         #-1
+        std         ,y
+        sty         <$50
+        bra         ploadloop
+ploaderr
+        lda         ,s
+        os9         I$Close
+        puls        a,x,y
+        lbra        warmst
+
         emod
 eom     equ        *
         end
