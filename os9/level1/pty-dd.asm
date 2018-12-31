@@ -28,8 +28,8 @@
          fcb $8 backspace
          fcb $18 delete line char
          fcb $0D end of record
-         fcb $1b eof
-         fcb $04 reprint line char
+         fcb $04 eof    cntl d
+         fcb $12 reprint line char
          fcb $01 duplicate last line char
          fcb $17 pause char
          fcb $03 interrupt char

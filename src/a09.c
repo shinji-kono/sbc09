@@ -53,7 +53,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#define NLABELS 2048
+#define NLABELS (2048*2)
 #define MAXIDLEN 16
 #define MAXLISTBYTES 8
 #define FNLEN 30
@@ -75,6 +75,14 @@ static struct longer {
 struct oprecord{char * name;
                 unsigned char cat;
                 unsigned short code;};
+
+#define EXPERR 1
+#define ILLAERR 2
+#define UDEFLABELERR 4
+#define MULTLABELERR 8
+#define RBRACHERR 16
+#define MSSINGLBLERR 32
+#define ILLNMERR 0x8000
 
 /* Instruction categories:
    0 one byte oprcodes   NOP
@@ -332,6 +340,10 @@ char exprcat;          /* category of expression being parsed, eg.
                           label or constant, this is important when
                           generating relocatable object code. */
 
+void seterror(int e) {
+    error |= e;
+}
+
 void makelonger(int gl) {
     if (pass==1) return;
     for(struct longer *p=lglist;p;p=p->next) {
@@ -420,7 +432,7 @@ int scanhex()
   if(namebuf[i]>'9')t-=7;
   i++;
  }
- if(i==0)error|=1;
+ if(i==0)seterror(1);
  return t;
 }
 
@@ -472,7 +484,7 @@ int scanlabel()
    p->cat=6;
    p->value=0;
  }
- if(p->cat==9||p->cat==11)error|=1;
+ if(p->cat==9||p->cat==11)seterror(1);
  exprcat=p->cat&14;
  if(exprcat==6||exprcat==10)unknown=1;
  if(((exprcat==2||exprcat==8)
@@ -490,7 +502,7 @@ int scanfactor()
  int t;
  skipspace();
  c=*srcptr;
- if(isalpha(c))return scanlabel();
+ if(isalpha(c)||c=='_')return scanlabel();
  else if(isdigit(c))return scandecimal();
  else switch(c) {
   case '*' : srcptr++;exprcat|=2; if(rmbmode) return prevloc; else return loccounter;
@@ -501,7 +513,7 @@ int scanfactor()
   case '@' : return scanoct();
   case '\'' : return scanchar();
   case '(' : srcptr++;t=scanexpr(0);skipspace();
-             if(*srcptr==')')srcptr++;else error|=1;
+             if(*srcptr==')')srcptr++;else seterror(1);
              return t;
   case '-' : srcptr++;exprcat^=32;return -scanfactor();
   case '+' : srcptr++;return scanfactor();
@@ -509,7 +521,7 @@ int scanfactor()
   case '^' : 
   case '~' : srcptr++;exprcat|=16;return ~scanfactor();
  }
- error|=1;
+ seterror(1);
  return 0;
 }
 
@@ -542,12 +554,12 @@ int scanexpr(int level) /* This is what you call _recursive_ descent!!!*/
            break;
   case '/':oldcat=exprcat;
            u=scanexpr(10);
-           if(u)t/=u;else error|=1;
+           if(u)t/=u;else seterror(1);
            exprcat|=oldcat|16;
            break;
   case '%':oldcat=exprcat;
            u=scanexpr(10);
-           if(u)t%=u;else error|=1;
+           if(u)t%=u;else seterror(1);
            exprcat|=oldcat|16;
            break;
   case '+':if(level==9)EXITEVAL
@@ -682,10 +694,10 @@ scanspecial()
    srcptr++;
    postbyte=0x83;
   } else postbyte=0x82;
-  if(!scanindexreg())error|=2;else srcptr++;
+  if(!scanindexreg())seterror(2);else srcptr++;
  } else {
   postbyte=0x80;
-  if(!scanindexreg())error|=2;else srcptr++;
+  if(!scanindexreg())seterror(2);else srcptr++;
   if(*srcptr=='+') {
    srcptr++;
    if(*srcptr=='+') {
@@ -715,10 +727,10 @@ scanindexed()
    case 3:postbyte+=0x89;break;
    }
  } else { /*pc relative*/
-  if(toupper(*srcptr)!='P')error|=2;
+  if(toupper(*srcptr)!='P')seterror(2);
   else {
     srcptr++;
-    if(toupper(*srcptr)!='C')error|=2;
+    if(toupper(*srcptr)!='C')seterror(2);
     else {
      srcptr++;
      if(toupper(*srcptr)=='R')srcptr++;
@@ -785,7 +797,7 @@ scanoperands()
   scanspecial();
   break;
  case '#':
-  if(mode==5)error|=2;else mode=0;
+  if(mode==5)seterror(2);else mode=0;
   srcptr++;
   if (*srcptr=='"') {
       operand = (srcptr[1]<<8) + srcptr[2] ;
@@ -827,9 +839,9 @@ scanoperands()
  if(mode>=5) {
   skipspace();
   postbyte|=0x10;
-  if(*srcptr!=']')error|=2;else srcptr++;
+  if(*srcptr!=']')seterror(2);else srcptr++;
  }
- if(pass==2&&unknown)error|=4;
+ if(pass==2&&unknown)seterror(4);
 }
 
 unsigned char codebuf[128];
@@ -944,7 +956,7 @@ setlabel(struct symrecord * lp)
  if(lp) {
   if(lp->cat!=13&&lp->cat!=6) {
    if(lp->cat!=2||lp->value!=loccounter)
-     lp->value=loccounter; // error|=8;
+     lp->value=loccounter; // seterror(8);
   } else {
    lp->cat=2;
    lp->value=loccounter;
@@ -982,7 +994,7 @@ doaddress() /* assemble the right addressing bytes for an instruction */
  case 4: case 6: offs=(unsigned short)operand-loccounter-codeptr-2;
                 if(offs<-128||offs>=128||opsize==3||unknown||!certain) {
                   if((!unknown)&&opsize==2&&(offs<-128||offs>=128) ) {
-                     error|=16; makelonger(glineno);
+                     seterror(16); makelonger(glineno);
                   }
                   offs--;
                   opsize=3;
@@ -1012,7 +1024,7 @@ oneimm(int co)
 {
  scanoperands();
  if(mode>=3)
-      error|=2;
+      seterror(2);
  putbyte(co);
  putbyte(operand);
 }
@@ -1022,7 +1034,7 @@ lea(int co)
 {
  putbyte(co);
  scanoperands();
- if(mode==0) error|=2;
+ if(mode==0) seterror(2);
  if(mode<3) {
    opsize=3;
    postbyte=0x8f;
@@ -1037,23 +1049,23 @@ sbranch(int co)
 {
  int offs;
  scanoperands();
- if(mode!=1&&mode!=2)error|=2;
+ if(mode!=1&&mode!=2)seterror(2);
  offs=(unsigned short)operand-loccounter-2;
  if(!unknown&&(offs<-128||offs>=128)) {
-     error|=16;makelonger(glineno);
+     seterror(16);makelonger(glineno);
      if (co==0x20) {
-         if(mode!=1&&mode!=2)error|=2;
+         if(mode!=1&&mode!=2)seterror(2);
          putbyte(0x16);
          putword(operand-loccounter-3);
      } else {
-         if(mode!=1&&mode!=2)error|=2;
+         if(mode!=1&&mode!=2)seterror(2);
          putbyte(0x10);
          putbyte(co);
          putword(operand-loccounter-4);
      }
      return;
  }
- if(pass==2&&unknown)error|=4;
+ if(pass==2&&unknown)seterror(4);
  putbyte(co);
  putbyte(offs);
 }
@@ -1062,7 +1074,7 @@ void
 lbra(int co)
 {
  scanoperands();
- if(mode!=1&&mode!=2)error|=2;
+ if(mode!=1&&mode!=2)seterror(2);
  putbyte(co);
  putword(operand-loccounter-3);
 }
@@ -1071,7 +1083,7 @@ void
 lbranch(int co)
 {
  scanoperands();
- if(mode!=1&&mode!=2)error|=2;
+ if(mode!=1&&mode!=2)seterror(2);
  putword(co);
  putword(operand-loccounter-4);
 }
@@ -1120,7 +1132,7 @@ oneaddr(int co)
 {
  scanoperands();
  switch(mode) {
- case 0: error|=2;break;
+ case 0: seterror(2);break;
  case 1: putbyte(co);break;
  case 2: putbyte(co+0x70);break;
  default: putbyte(co+0x60);break;
@@ -1135,13 +1147,13 @@ tfrexg(int co)
  putbyte(co);
  skipspace();
  scanname();
- if((p=findreg(namebuf))==0)error|=2;
+ if((p=findreg(namebuf))==0)seterror(2);
  else postbyte=(p->tfr)<<4;
  skipspace();
- if(*srcptr==',')srcptr++;else error|=2;
+ if(*srcptr==',')srcptr++;else seterror(2);
  skipspace();
  scanname();
- if((p=findreg(namebuf))==0)error|=2;
+ if((p=findreg(namebuf))==0)seterror(2);
  else postbyte|=p->tfr;
  putbyte(postbyte);
 }
@@ -1156,7 +1168,7 @@ pshpul(int co)
   if(*srcptr==',')srcptr++;
   skipspace();
   scanname();
-  if((p=findreg(namebuf))==0)error|=2;
+  if((p=findreg(namebuf))==0)seterror(2);
   else postbyte|=p->psh;
   skipspace();
  }while (*srcptr==',');
@@ -1170,7 +1182,7 @@ skipComma()
  if (*srcptr==',') {
    srcptr++;
  } else {
-   error|=1;  
+   seterror(1);  
  }
 }
 
@@ -1182,16 +1194,16 @@ void os9begin()
  reset_crc();
  putword(0x87cd);
  putword(scanexpr(0)-loccounter);  // module size
- if(unknown&&pass==2)error|=4;
+ if(unknown&&pass==2)seterror(4);
  skipComma();
  putword(scanexpr(0)-loccounter);  // offset to module name
- if(unknown&&pass==2)error|=4;
+ if(unknown&&pass==2)seterror(4);
  skipComma();
  putbyte(scanexpr(0));             // type / language
- if(unknown&&pass==2)error|=4;
+ if(unknown&&pass==2)seterror(4);
  skipComma();
  putbyte(scanexpr(0));             // attribute
- if(unknown&&pass==2)error|=4;
+ if(unknown&&pass==2)seterror(4);
  int parity=0;
  for(int i=0; i< 8; i++) parity^=codebuf[i];
  putbyte(parity^0xff);              // header parity
@@ -1199,7 +1211,7 @@ void os9begin()
  while (*srcptr==',') {             // there are some more
    srcptr++;
    putword(scanexpr(0));   
-   if(unknown&&pass==2)error|=4;
+   if(unknown&&pass==2)seterror(4);
    skipspace();
  }
  prevloc = codeptr;
@@ -1239,7 +1251,7 @@ pseudoop(int co,struct symrecord * lp)
         setlabel(lp);
         oldlc = loccounter;
         operand=scanexpr(0);
-        if(unknown)error|=4;
+        if(unknown)seterror(4);
         loccounter+=operand;
         if(generating&&pass==2) {
            if(!outmode && !os9 ) {
@@ -1251,14 +1263,14 @@ pseudoop(int co,struct symrecord * lp)
         break;
  case 5:/* EQU */
         operand=scanexpr(0);
-        if(!lp)error|=32;
+        if(!lp)seterror(32);
         else {
          if(lp->cat==13||lp->cat==6||
             (lp->value==(unsigned short)operand&&pass==2)) {
           if(exprcat==2)lp->cat=2;
           else lp->cat=0;
           lp->value=oldlc=operand;
-         } else // else error|=8;
+         } else // else seterror(8);
           lp->value=oldlc=operand;
         }
         break;
@@ -1275,7 +1287,7 @@ pseudoop(int co,struct symrecord * lp)
          if(*srcptr=='\"')srcptr++;
         } else {
           putbyte(scanexpr(0));
-          if(unknown&&pass==2)error|=4;
+          if(unknown&&pass==2)seterror(4);
         }
         skipspace();
         } while(*srcptr==',');
@@ -1296,7 +1308,7 @@ pseudoop(int co,struct symrecord * lp)
          if(*srcptr==',')srcptr++;
          skipspace();
          putword(scanexpr(0));
-         if(unknown&&pass==2)error|=4;
+         if(unknown&&pass==2)seterror(4);
          skipspace();
         } while(*srcptr==',');
         break;
@@ -1342,7 +1354,7 @@ pseudoop(int co,struct symrecord * lp)
         break;                
  case 12: /* ORG */
          operand=scanexpr(0);
-         if(unknown)error|=4;
+         if(unknown)seterror(4);
          if(generating&&pass==2&&!outmode&&!os9) {
            for(i=0;i<(unsigned short)operand-loccounter;i++)
                 fputc(0,objfile); 
@@ -1352,20 +1364,20 @@ pseudoop(int co,struct symrecord * lp)
          break;
   case 14: /* SETDP */
          operand=scanexpr(0);
-         if(unknown)error|=4;
+         if(unknown)seterror(4);
          if(!(operand&255))operand=(unsigned short)operand>>8;
          if((unsigned)operand>255)operand=-1;
          dpsetting=operand;              
          break;
   case 15: /* SET */
         operand=scanexpr(0);
-        if(!lp)error|=32;
+        if(!lp)seterror(32);
         else {
          if(lp->cat&1||lp->cat==6) {
           if(exprcat==2)lp->cat=3;
           else lp->cat=1;
           lp->value=oldlc=operand;
-         } else // else error|=8;
+         } else // else seterror(8);
           lp->value=oldlc=operand;
         }
         break;
@@ -1402,7 +1414,7 @@ pseudoop(int co,struct symrecord * lp)
         setlabel(lp);
         putword(0x103f); // SWI2
         putbyte(scanexpr(0));
-        if(unknown&&pass==2)error|=4;
+        if(unknown&&pass==2)seterror(4);
         break; 
    case 18: /* TTL */     
         break;
@@ -1428,7 +1440,7 @@ processline()
  unknown=0;certain=1;
  lp=0;
  codeptr=0;
- if(isalnum(*srcptr)) {
+ if(*srcptr=='_'||isalnum(*srcptr)) {
   scanname();lp=findsym(namebuf);
   if(*srcptr==':') srcptr++;
   if(lp && pass==2) {
@@ -1463,9 +1475,9 @@ processline()
    }
    c=*srcptr;
    if (debug) fprintf(stderr,"DEBUG: processline: mode=%d, opsize=%d, error=%d, postbyte=%02X c=%c\n",mode,opsize,error,postbyte,c);
-   if(c!=' '&&*(srcptr-1)!=' '&&c!=0&&c!=';')error|=2;
+   if(c!=' '&&*(srcptr-1)!=' '&&c!=0&&c!=';')seterror(2);
   }
-  else error|=0x8000;
+  else seterror(0x8000);
  } else {
      if (lp) {
          lp->next = prevlp;

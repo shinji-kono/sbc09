@@ -1,0 +1,122 @@
+FILE *fopen(name,mode)
+char *name,*mode;
+{char *p;
+ int rd,wt,cm;
+	rd = wt = cm = 0;
+	for ( p = mode; *p; p++ ) {
+		switch ( *p ) {
+		case 'r':
+			rd = 1; break;
+		case 'w':
+			wt = 1; break;
+		case 'c':
+			cm = 1; break;
+		default:
+			return NULL;
+		}
+	}
+	if ( !(rd ^ wt) ) return NULL;
+	if ( rd ) return _open(name,cm);
+	else return _create(name,cm);
+}
+
+FILE *_open(name,cm)
+char *name;
+int cm;
+{FILE *fp;
+ int i;
+	for ( i = 0; i < NFILES; i++)
+		if ( _fptbl[i] == NULL ) break;
+	if ( i >= NFILES) return NULL;
+	if ( (fp = malloc(FBSIZE)) == NULL ) return NULL;
+	if ( _setname(name,fp->_fcb) == 0 ) return NULL;
+	if ( FMS(fp->_fcb,1) < 0 ) return NULL;
+	fp->_fcb[59] = cm ? 0 : 0xff;
+	fp->_fcb[60] = 0;
+	return (_fptbl[i] = fp);
+}
+
+FILE *_create(name,cm)
+char *name;
+int cm;
+{FILE *fp;
+ int i;
+	for ( i = 0; i < NFILES; i++)
+		if ( _fptbl[i] == NULL ) break;
+	if ( i >= NFILES) return NULL;
+	if ( (fp = malloc(FBSIZE)) == NULL ) return NULL;
+	if ( _setname(name,fp->_fcb) == 0 ) return NULL;
+	if ( FMS(fp->_fcb,2) < 0 )
+	{	if ( (fp[1] != 3) || (FMS(fp->_fcb,12) < 0) ) return NULL;
+		_setname(name,fp->_fcb);
+		if (FMS(fp->_fcb,2) < 0) return NULL;
+	}
+	fp->_fcb[15] = 0;
+	fp->_fcb[59] = cm ? 0 : 0xff;
+	fp->_fcb[60] = 0;
+	return (_fptbl[i] = fp);
+}
+
+fclose(fp)
+FILE *fp;
+{int i;
+	for ( i = 0; i < NFILES; i++ )
+		if ( fp == _fptbl[i] ) break;
+	if ( i >= NFILES ) return EOF;
+	_fptbl[i] = NULL;
+	if ( (fp == STDIN) || (fp == STDOUT) || (fp == STDERR) ) return 0;
+	if ( fp->_fcb[2] == 2 ) fflush(fp);
+	if ( FMS(fp->_fcb,4) < 0 ) return EOF;
+	mfree(fp);
+	return 0;
+}
+
+_setname(name,fcbp)
+char *name;
+char *fcbp;
+{int i;
+	while(isspace(*name)) ++name;
+	if (isdigit(*name))
+	{	fcbp[3] = *name++ - '0';
+		if (*name++ != '.') return 0;
+	}
+	else fcbp[3] = 0xff;
+	for (i = 4; i < 15; ++i) fcbp[i] = 0;
+	if (!isalpha(*name)) return -1;
+	for (i = 4; i < 12; ++i)
+	{	if (!*name || (*name == '.')) break;
+		fcbp[i] = *name++;
+	}
+	while (*name && (*name != '.')) ++name;
+	if (*name == '.')
+	{	++name;
+		for (i = 12; i < 15; ++i)
+		{	if (!*name) break;
+			fcbp[i] = *name++;
+		}
+	}
+	return 1;
+}
+
+fflush(fp)
+FILE *fp;
+{int i;
+	if ( fp == STDIN ) return EOF;
+	if ( fp == STDOUT || fp == STDERR ) return 0;
+	if ( fp->_fcb[2] != 2 ) return EOF;
+	for ( i = 0; i < fp->_fbp; i++ ) FMS(fp->_fcb,0,fp->fcb[i]);
+	fp->_fbp = 0;
+	return 0;
+}
+
+unlink(fname)
+char *fname;
+{char p[320];
+        return ((_setname(fname,p) || FMS(p,12) < 0) ? -1 : 0);
+}
+        
+rename(s,t)
+char *s,*t;
+{char p[320];
+        return ((_setname(s,p) || _setname(t,p+49) || FMS(p,13) < 0) ? -1 : 0);
+}

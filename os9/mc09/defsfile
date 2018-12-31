@@ -1,0 +1,18 @@
+* Main defsfile for OS-9 Level One V1
+*
+*
+* OS-9 Level and Version equates
+Level    equ   1
+OS9Vrsn  equ   1
+OS9Major equ   0
+OS9Minor equ   1
+
+NOS9VER   equ OS9Vrsn 
+NOS9MAJ   equ OS9Major
+NOS9MIN   equ OS9Minor
+
+
+         use   ../nitros9-code/defs/os9.d
+         use   ../nitros9-code/defs/scf.d
+         use   ../nitros9-code/defs/rbf.d
+

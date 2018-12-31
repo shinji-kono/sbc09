@@ -1,0 +1,290 @@
+
+
+#define	FILE	char
+#define	FCBSIZE	320
+#define	NFILES	16
+
+#define	NULL	0
+#define EOF	(-1)
+
+#define	stdin	_fcbtbl[0]
+#define	stdout	_fcbtbl[1]
+#define	stderr	_fcbtbl[2]
+
+#define	STDIN	0xffff
+#define	STDOUT	0xfffe
+#define	STDERR	0xfffd
+
+FILE *_fcbtbl[NFILES];
+
+char _ch;
+int _fch = 0;
+
+_main(argc,argv)
+int argc;
+char **argv;
+{int i;
+	initheap();
+        stdin = STDIN;
+        stdout = STDOUT;
+        stderr = STDERR;
+        for (i = 3; i < NFILES; ++i) _fcbtbl[i] = NULL;
+        main(argc,argv);
+}
+
+ungetc(c,fp)
+char c;
+FILE *fp;
+{       if (fp == STDIN)
+        {       _fch = 1;
+                return _ch = c;
+        }
+        fp[62] = 1;
+        return fp[61] = c;
+}
+
+getc(fp)
+FILE *fp;
+{
+        switch ( fp ) {
+        case STDIN:
+                if (_fch) { _fch = 0; return _ch; }
+                return GETCH();
+        case STDOUT:
+        case STDERR:
+                return EOF;
+        default:
+                if (fp[2] != 1) return -1;
+                if (fp[62]) { fp[62] = 0; return fp[61]; }
+                return FMS(fp,0);
+        }
+}
+
+putc(c,fp)
+char c;
+FILE *fp;
+{       switch ( fp ) {
+        case STDIN:
+                return EOF;
+        case STDOUT:
+                return PUTCH(c);
+        case STDERR:
+                return PUTCH2(c);
+        default:
+                if (fp[2] != 2) return EOF;
+                if (FMS(fp,0,c) < 0) return EOF;
+                return c;
+        }
+}
+
+ugetch(c)
+char c;
+{       return ungetc(c,stdin);
+}
+
+getchar()
+{       return getc(stdin);
+}
+
+putchar(c)
+char c;
+{       return putc(c,stdout);
+}
+
+printf(s)
+char *s;
+{       _fprintf(stdout,s,(int *)&s+1);
+}
+
+fprintf(fp,s)
+FILE *fp;
+char *s;
+{       _fprintf(fp,s,(int *)&s+1);
+}
+
+_fprintf(fp,s,p)
+FILE *fp;
+char *s;
+int *p;
+{int l,m,n;
+ char c,buf[8];
+        while(c = *s++)
+                if (c != '%') putc(c,fp);
+                else
+                {       if (l=(*s == '-')) ++s;
+                        if (isdigit(*s)) s += _getint(&m,s);
+                        else m = 0;
+                        if (*s == '.') ++s;
+                        if (isdigit(*s)) s += _getint(&n,s);
+                        else n = 32767;
+                        switch(c = *s++)
+                        {case 'd':
+                                itoa(*p++,buf);
+                                break;
+                        case 'o':
+                                itooa(*p++,buf);
+                                break;
+                        case 'x':
+                                itoxa(*p++,buf);
+                                break;
+                        case 'u':
+                                itoua(*p++,buf);
+                                break;
+                        case 'c':
+                                ctos(*p++,buf);
+                                break;
+                        case 's':
+                                _putstr(fp,*p++,l,m,n);
+                                continue;
+                        case '\0':
+                                return;
+                        default:
+                                ctos(c,buf);
+                                break;
+                        }
+                        _putstr(fp,buf,l,m,n);
+                }
+}
+
+_getint(p,s)
+int *p;
+char *s;
+{int i;
+        for(*p = i = 0; isdigit(*s); ++i) *p = *p * 10 + *s++ - '0';
+        return i;
+}
+
+_putstr(fp,s,l,m,n)
+FILE fp;
+char *s;
+int l,m,n;
+{int k;
+        k = (strlen(s) < n ? strlen(s) : n);
+        m = (k < m ? m - k : 0);
+        if (l)
+        {       _putsn(fp,s,n);
+                _putspc(fp,m);
+        }
+        else
+        {       _putspc(fp,m);
+                _putsn(fp,s,n);
+        }
+}
+        
+_putsn(fp,s,n)
+FILE fp;
+char *s;
+int n;
+{       while(*s)
+                if (--n >= 0) putc(*s++,fp);
+                else break;
+}
+
+_putspc(fp,n)
+FILE *fp;
+int n;
+{       while(--n >= 0) putc(' ',fp);
+}
+
+itoa(n,s)
+int n;
+char *s;
+{       if (n < 0)
+        {       *s++ = '-';
+                return (itoua(-n,s) + 1);
+        }
+        return itoua(n,s);
+}
+
+itoua(n,s)
+int n;
+char *s;
+{       return _itoda(n,s,10);
+}
+
+ctos(c,s)
+char c,*s;
+{       s[0] = c;
+        s[1] = '\0';
+        return s;
+}
+
+itooa(n,s)
+int n;
+char *s;
+{       return _itoda(n,s,8);
+}
+
+itoxa(n,s)
+int n;
+char *s;
+{       return _itoda(n,s,16);
+}
+
+_itoac(n);
+int n;
+{       return (n + ((n < 10) ? '0' : ('A'-10)));
+}
+
+_itoda(n,s,r)
+unsigned n;
+int r;
+char *s;
+{int i;
+ char t[8],*u;
+        u = t;
+        *u++ = '\0';
+        do *u++ = _itoac(n % r); while(n /= r);
+        for (i=0; *s++ = *--u; ++i);
+        return i;
+}
+
+isdigit(c)
+char c;
+{       return ('0' <= c && c <= '9');
+}
+
+isspace(c)
+char c;
+{       return (c == ' ' || c == '\t' || c == '\n');
+}
+
+isalpha(c)
+char c;
+{       return (isupper(c) || islower(c) || c == '_');
+}
+
+isupper(c)
+char c;
+{       return ('A' <= c && c <= 'Z');
+}
+
+islower(c)
+char c;
+{       return ('a' <= c && c <= 'z');
+}
+
+toupper(c)
+char c;
+{       return (islower(c) ? c + ('A'-'a') : c);
+}
+
+tolower(c)
+char c;
+{       return (isupper(c) ? c + ('a'-'A') : c);
+}
+
+atoi(s)
+char *s;
+{int i,m;
+        while (isspace(*s)) ++s;
+        if (m = (*s == '-')) ++s;
+        for (i = 0; isdigit(*s);) i = i * 10 + *s++ - '0';
+        return (m ? -i : i);
+}
+strlen(s)
+char *s;
+{int i;
+        for (i = 0; *s++; ++i);
+        return i;
+}

@@ -1,0 +1,118 @@
+
+typedef struct header
+		{	struct header *ptr;
+			unsigned size;
+		} HEADER;
+
+HEADER base,*allocp,*heap;
+
+char *malloc(s)
+unsigned s;
+{HEADER *p,*q;
+ int nunits;
+	nunits = 1 + (s + sizeof(HEADER) - 1) / sizeof(HEADER);
+	if ((q = allocp) == NULL)
+	{	base.ptr = allocp = q = &base;
+		base.size = 0;
+	}
+	for (p = q->ptr; ; q = p,p = p->ptr)
+	{	if (p->size >= nunits)
+		{	if (p->size == nunits)
+				q->ptr = p->ptr;
+			else
+			{	p->size -= nunits;
+				p += p->size;
+				p->size = nunits;
+			}
+			allocp = q;
+			clearblock(p);
+			return ((char *)(p + 1));
+		}
+		if (p == allocp)
+			if ((p = morecore(nunits)) == NULL)
+				return(NULL);
+	}
+}
+
+clearblock(p)
+HEADER *p;
+{char *s,*t;
+	s = (char *)(p + 1);
+	t = (char *)(p + p->size);
+	while (s < t) *s++ = 0;
+}
+
+#define NALLOC 128
+
+HEADER *morecore(nu)
+unsigned nu;
+{char *cp;
+ HEADER *up;
+ int rnu;
+	rnu = NALLOC * ((nu + NALLOC - 1) / NALLOC);
+	cp = sbrk(rnu * sizeof(HEADER));
+	if ((int)cp == -1) return NULL;
+	up = (HEADER *) cp;
+	up->size = rnu;
+	mfree((char *)(up+1));
+	return allocp;
+}
+
+#asm
+sbrk	PSHS	U
+	LEAU	,S
+	
+	LDD	heap,Y
+	BNE	_mc0
+	BSR	initheap
+_mc0	PSHS	D
+	TFR	S,D
+	SUBD	,S++
+	CMPD	4,U
+	BCC	_mc1
+	LDD	#-1
+	LEAS	,U
+	PULS	U,PC
+	
+_mc1	LDD	4,U
+	LDX	heap,Y
+	LEAX	D,X
+	LDD	heap,Y
+	STX	heap,Y
+	LEAS	,U
+	PULS	U,PC
+
+initheap
+	PSHS	U
+	LEAU	,S
+	TFR	Y,D
+	ADDD	#_GLOBALS
+	STD	heap,Y
+	LEAS	,U
+	PULS	U,PC
+#endasm
+
+mfree(ap)
+char *ap;
+{HEADER *p,*q;
+	p = (HEADER *)ap - 1;
+	for (q = allocp; !(p > q && p < q->ptr); q = q->ptr)
+		if (q >= q->ptr && (p > q || p < q->ptr)) break;
+	if (p + p->size == q->ptr)
+	{	p->size += q->ptr->size;
+		p->ptr = q->ptr->ptr;
+	}
+	else p->ptr = q->ptr;
+	if (q + q->size == p)
+	{	q->size += p->size;
+		q->ptr = p->ptr;
+	}
+	else q->ptr = p;
+	allocp = q;
+}
+
+unsigned freesize()
+{int i;
+	if (!heap) initheap();
+	return ((char *)&i - (char *)heap);
+}

@@ -1,0 +1,120 @@
+*** mc.c	Tue Nov 24 18:58:43 1987
+--- mc2.c	Tue Nov 24 18:51:22 1987
+***************
+*** 1,9 ****
+  
+  #define DEBUG	error(-1)
+  
+! /*#include "CCLIB.TXT"
+! */
+! #include <stdio.h>
+  
+  #define INT	(-1)
+  #define CHAR	(-2)
+--- 1,7 ----
+  
+  #define DEBUG	error(-1)
+  
+! #include "mclib.c"
+  
+  #define INT	(-1)
+  #define CHAR	(-2)
+***************
+*** 147,153 ****
+  #define GSYMS	450
+  #define LSYMS	50
+  
+! #define HEAPSIZE	1000
+  #define CHEAPSIZE	3000
+  #define LBUFSIZE	256
+  
+--- 145,151 ----
+  #define GSYMS	450
+  #define LSYMS	50
+  
+! #define HEAPSIZE	700
+  #define CHEAPSIZE	3000
+  #define LBUFSIZE	256
+  
+***************
+*** 181,187 ****
+  char *ccout;
+  	if(argc==1) exit(1);
+  	lsrc = chk = asmf = 0;
+! 	ccout = "c.out";
+  	ac=argc;
+  	av=argv;
+  	for (ac2=1; (ac2 < ac) && (*av[ac2] == '-'); ++ac2)
+--- 179,185 ----
+  char *ccout;
+  	if(argc==1) exit(1);
+  	lsrc = chk = asmf = 0;
+! 	ccout = "C.OUT";
+  	ac=argc;
+  	av=argv;
+  	for (ac2=1; (ac2 < ac) && (*av[ac2] == '-'); ++ac2)
+***************
+*** 201,207 ****
+  		}
+  	fclose(stdout);
+  	if (!chk)
+! 		if ( (obuf = fopen(ccout,"w")) == NULL ) error(FILERR);
+  	init();
+  	while(1)
+  	{	for (nptr = &ntable[GSYMS],i=LSYMS; i--;)
+--- 199,205 ----
+  		}
+  	fclose(stdout);
+  	if (!chk)
+! 		if ( (obuf = fopen(ccout,"wc")) == NULL ) error(FILERR);
+  	init();
+  	while(1)
+  	{	for (nptr = &ntable[GSYMS],i=LSYMS; i--;)
+***************
+*** 322,328 ****
+  newfile()
+  {	lineno=0;
+  	fprintf(stderr,"%s:\n",av[ac2]);
+! 	if ( (filep->fcb = fopen(av[ac2++],"r")) == NULL ) error(FILERR);
+  }
+  reserve(s,d)
+  char *s;
+--- 320,326 ----
+  newfile()
+  {	lineno=0;
+  	fprintf(stderr,"%s:\n",av[ac2]);
+! 	if ( (filep->fcb = fopen(av[ac2++],"rc")) == NULL ) error(FILERR);
+  }
+  reserve(s,d)
+  char *s;
+***************
+*** 2749,2762 ****
+  }
+  FILE *getfname()
+  {int i;
+! char name[LBUFSIZE];
+  	getch();
+  	if(skipspc()!='"') error(INCERR);
+  	for(i=0;(getch()!='"' && ch!='\n');)
+! 		if(i<LBUFSIZE-1) name[i++]=ch;
+  	if(ch=='\n') error(INCERR);
+  	name[i]=0;
+! 	return ( (filep+1)->fcb = fopen(name,"r") );
+  }
+  getline()
+  {int i;
+--- 2747,2760 ----
+  }
+  FILE *getfname()
+  {int i;
+! char name[14];
+  	getch();
+  	if(skipspc()!='"') error(INCERR);
+  	for(i=0;(getch()!='"' && ch!='\n');)
+! 		if(i<13) name[i++]=ch;
+  	if(ch=='\n') error(INCERR);
+  	name[i]=0;
+! 	return ( (filep+1)->fcb = fopen(name,"rc") );
+  }
+  getline()
+  {int i;
