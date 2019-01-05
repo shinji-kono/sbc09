@@ -1102,7 +1102,7 @@ pload   pshs        a,x,y
         ldx         ,u
         lda         #1
         os9         I$Open
-        bcs         ploaderr
+        bcs         ploader1
         sta         ,s
 ploadloop
         lda         ,s
@@ -1135,6 +1135,7 @@ pl02    clra
 ploaderr
         lda         ,s
         os9         I$Close
+ploader1
         puls        a,x,y
         lbra        warmst
 

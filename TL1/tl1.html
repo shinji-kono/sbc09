@@ -1,0 +1,470 @@
+<html xmlns='http://www.w3.org/1999/xhtml'>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<head>
+<title>TL/1 言語仕様</title>
+<link rel='stylesheet' type='text/css' href='tl1.css' />
+</head>
+<body>
+<h1>TL/1 言語仕様</h1>
+<h2>概要</h2>
+<p>この文章はプログラミング言語 TL/1 の言語仕様のまとめです。 雑誌やウェブ上にある説明などを元にして私の解釈や曖昧箇所の指摘を加えて仕様の体裁に再構成したものです。</p>
+<p>説明のために元資料にない用語を使う場合もあります。</p>
+<p>この文章中で「未定義」としている箇所は、元資料から判断がつかないことを陽に示したものです。</p>
+<p><a href="tl1-syntax-diagram.xhtml">構文図</a>も用意していますが、識別子の解釈に独特な部分があるので文章の方を先に読んでから構文図を参考にした方がよいでしょう。</p>
+
+<h2>字句</h2>
+
+<h3>コメント</h3>
+<p>パーセント記号 (%) から次の改行までは無視され、プログラム的には空白文字と同等の意味しか持ちません。 プログラムの説明などを記述するのに使ってください。</p>
+
+<h3 id='identifier'>識別子</h3>
+<p>英文字で始まり、後続する英数字 0 個以上で構成されます。 識別子を構成しない文字 (空白や記号) の直前までを 1 個の語として解釈します。 大文字と小文字は区別しません。 識別子の長さに上限はありません。</p>
+<p>予約語、手続き名、関数名、大域単変数名、大域配列名、小域単変数名、小域配列名が同じ綴りを持つ可能性があります。 宣言時に既存の名前と重複しないかチェックされません。 宣言以外の箇所では処理系は以下の順序で名前の検索を試み、最初に発見された属性の識別子として解釈します。</p>
+<ol>
+<li>小域配列名</li>
+<li>小域単変数名</li>
+<li>大域配列名</li>
+<li>大域単変数名</li>
+<li>関数名</li>
+<li>手続き名</li>
+<li>予約語</li>
+</ol>
+
+<h3 id='number'>数値</h3>
+<p>4 種類の表現方法があります。</p>
+<p>TL/1 で直接的に扱える数値はバイトサイズであり、ゆえにプログラム中で現れる数値表現は常に 0〜255 の範囲内です。</p>
+<p>構文中で真偽値を要求している箇所においては 255 を真、それ以外の値は偽と解釈します。 真偽値を返す関数は真として 255 を、偽として 0 を返します。</p>
+
+<h4>十進定数</h4>
+<p>0〜9 の文字を 1 つ以上並べて 0〜255 の範囲を数を表現できます。</p>
+<p>頭に余計な 0 を付けた場合 (例えば 02 のような) の挙動は未定義です。</p>
+
+<h4>十六進定数</h4>
+<p>記号 $ に 0〜9 または a〜f で十六進表現で 0〜255 を表します。a〜f は大文字 (A〜F) を使っても同じ意味です。</p>
+<p>記号 $ の後に空白文字を入れてはいけません。</p>
+<p>十六進で二桁にするために余計な 0 を頭に付けること (例えば $0A のような) は許されますが、それよりも多くの 0 を頭に付けた場合 (例えば $002) の挙動は未定義です。</p>
+
+<h4>文字リテラル定数</h4>
+<p>クオートで挟まれた一文字で表現します。 その一文字のアスキーコードと同じ数値が書かれたものと見做されます。</p>
+<pre class='example'>'A' % 65 と書いたのと同じ意味</pre>
+
+<h4>論理定数</h4>
+<p>識別子 <span class='reserved'>TRUE</span> もしくは <span class='reserved'>FALSE</span> で表します。 <span class='reserved'>TRUE</span> は $FF 、 <span class='reserved'>FALSE</span> は 0 と同じです。</p>
+
+<h3>記号</h3>
+<p>その他、演算子や構文には記号を用いますが、後述する構文の説明の中で取り上げます。</p>
+
+<h3>空白文字</h3>
+<p>語の間に挿入することが出来ます。 語の区切りとしては 1 個あれば充分ですが、何個連続しても意味は変わりませんので外観を整えるために活用して下さい。 空白文字と解釈する文字は以下の通りです。</p>
+<ul>
+<li>文字コード $1F 以下の文字 (制御文字)</li>
+<li>空白</li>
+<li>ピリオド (.)</li>
+<li>セミコロン (;)</li>
+</ul>
+<p>使い方に習慣的な意味がある場合もあり、それについては後述します。</p>
+
+
+<h2>プログラムの構成</h2>
+<p>プログラムは以下の順序で構成されます。</p>
+
+<ol>
+  <li>手続き名宣言</li>
+  <li>関数名宣言</li>
+  <li>大域単変数名宣言</li>
+  <li>大域配列名・配列の大きさ宣言</li>
+  <li>主プログラムの定義</li>
+  <li>手続き、または関数の定義群</li>
+</ol>
+
+<p>それぞれの内容は以下のようになります。</p>
+
+<h3>手続き名宣言</h3>
+<p>プログラム中で使用する手続き名を予約語 <span class='reserved'>PROC</span> に続けて書きます。 手続き名が複数の場合はカンマで区切ります。</p>
+<pre class='form'>
+<span class='reserved'>PROC</span> <span class='metavar'>手続き1</span> , <span class='metavar'>手続き2</span> , <span class='metavar'>手続き3</span> ...
+</pre>
+<p>手続きが 0 個の場合は宣言を省略します。</p>
+
+<h3>関数名宣言</h3>
+<p>プログラム中で使用する関数名を予約語 <span class='reserved'>FUNC</span> に続けて書きます。 関数名が複数の場合はカンマで区切ります。 </p>
+<pre class='form'>
+<span class='reserved'>FUNC</span> <span class='metavar'>関数1</span> , <span class='metavar'>関数2</span> , <span class='metavar'>関数3</span> ...
+</pre>
+<p>関数を 0 個の場合は宣言を省略します。</p>
+
+<h3>大域単変数名宣言</h3>
+<p>プログラム全体で使用する単変数名を予約語 <span class='reserved'>VAR</span> に続けて書きます。 大域単変数名が複数の場合はカンマで区切ります。</p>
+<pre class='form'>
+<span class='reserved'>VAR</span> <span class='metavar'>単変数1</span> , <span class='metavar'>単変数2</span> , <span class='metavar'>単変数3</span> ...
+</pre>
+<p>大域単変数が 0 個の場合は宣言を省略します。</p>
+<p>後述の大域配列と合計して 256 バイト以内である必要があります。 更に<a href='#subprogram'>副プログラム</a>を呼出す場合は 2 バイトの余地が必要 (大域単変数と大域配列を合計した大きさが 254 バイト以下になる必要がある) です。 </p>
+
+<h3>大域配列名・配列の大きさ宣言</h3>
+<p>プログラム全体で使用する配列名とその大きさを予約語 <span class='reserved'>ARRAY</span> に続けて書きます。 配列の大きさは配列名の後に角括弧で囲んだ数値で表します。 配列名が複数の場合はカンマで区切ります。</p>
+<pre class='form'>
+
+<span class='reserved'>ARRAY</span> <span class='metavar'>配列1</span> [ <span class='metavar'>配列1の大きさ</span> ] ,
+      <span class='metavar'>配列2</span> [ <span class='metavar'>配列2の大きさ</span> ] ,
+      <span class='metavar'>配列3</span> [ <span class='metavar'>配列3の大きさ</span> ] ...
+</pre>
+<p>配列の大きさは配列の添字の最大値です。 例えば A[10] と宣言した配列に対しては 0〜10 の添字で安全に参照できることを意味します。 C などのように配列の要素数ではないことに注意してください。</p>
+<h3>主プログラムの定義</h3>
+<p>予約語 <span class='reserved'>BEGIN</span> と <span class='reserved'>END</span> で狭んだ 0 個以上の<a href='#statement'>実行文</a>から成ります。</p>
+<h3 id='subprogram'>副プログラムの定義</h3>
+<p>副プログラムとは手続きか関数です。 以下のような順序で構成されます。</p>
+<ol>
+<li>副プログラム名</li>
+<li>仮引数リスト</li>
+<li>小域単変数名宣言</li>
+<li>小域配列名・配列の大きさ宣言</li>
+<li>予約語 <span class='reserved'>BEGIN</span></li>
+<li>0 個以上の実行文</li>
+<li>予約語 <span class='reserved'>END</span></li>
+</ol>
+<p>これが副プログラムの個数分だけ繰返されます。</p>
+<p>副プログラムの定義は宣言の順序と一致しなくてもかまいません。</p>
+<h4>副プログラム名</h4>
+<p>プログラムの最初の手続き名宣言か関数名宣言で宣言した名前です。</p>
+<h4>仮引数リスト</h4>
+<p>丸括弧で囲まれた複数の識別子です。 識別子が複数の場合はカンマで区切ります。</p>
+<pre class='form'>
+( <span class='metavar'>仮引数1</span> , <span class='metavar'>仮引数2</span> , <span class='metavar'>仮引数3</span> ...)
+</pre>
+<p>仮引数はいわゆる値渡しのみです。 呼出し時の実引数で初期化される点が異なるだけの小域単変数です。 (暗黙の小域単変数宣言)</p>
+<p>仮引数が 0 個の場合は丸括弧ごと省略することも出来ます。</p>
+<h4>小域単変数名宣言</h4>
+<p>当該の副プログラム内だけで参照可能な単変数を宣言します。 形式は大域単変数と同じです。</p>
+<p>小域単変数が 0 個の場合は宣言を省略します。</p>
+<p>大域単変数・大域配列と同様に、小域単変数と小域配列を合せた大きさが 256 バイト以下である必要があります。</p>
+<h4>小域配列名宣言</h4>
+<p>当該の副プログラム内だけで参照可能な配列を宣言します。 形式は大域配列と同じです。</p>
+
+<h2 id='statement'>実行文</h2>
+<h3>複文</h3>
+<p>文括弧で 0 個以上の実行文を囲うことで 1 個の実行文にまとめることが出来ます。</p
+>
+<pre class='form'><span class='reserved'>BEGIN</span> <span class='metavar'>実行文リスト</span> <span class='reserved'>END</span></pre>
+<pre class='form'>{ <span class='metavar'>実行文リスト</span> }</pre>
+<pre class='form'>[ <span class='metavar'>実行文リスト</span> ]</pre>
+<pre class='form'>( <span class='metavar'>実行文リスト</span> )</pre>
+<p>まとめられた文は複文と呼ばれ、あたかもひとつの実行文であるかのように振舞いますので、以降の説明で実行文が現れることが出来る箇所のどこにでも現れることが出来ます。 囲まれた実行文が 0 個の複文は空文と呼びます。</p>
+<p>どの括弧記号を使っても同じ意味ですが、必ず対応する閉じ括弧で閉じる必要があります。 例えば「{」で始めて「]」で閉じるような使い方は出来ません。</p>
+<p>複文中のそれぞれの実行文を区切るために、空白文字として無視されるセミコロン (;) を書く習慣があります。</p>
+<p>主プログラム、副プログラムの本文も複文の一種ではありますが、上記で示した通り <span class='reserved'>BEGIN</span> と <span class='reserved'>END</span> で挟む必要があり、他の括弧は使えません。</p>
+<h3>STOP</h3>
+<p>実行を停止してモニタに飛びます。</p>
+<p>主プログラムの最後には自動的に挿入されるので書かなくてもよいですが、主プログラム/副プログラムの任意の場所に書けます。</p>
+<h3>RETURN</h3>
+<p>手続き、または関数から復帰します。</p>
+<pre class='form'>
+<span class='reserved'>RETURN</span>
+</pre>
+<pre class='form'>
+<span class='reserved'>RETURN</span> <span class='metavar'>式</span>
+</pre>
+<p>手続きから復帰する場合には式を持たない書式で、関数から復帰する場合は 1 個の式が続く書式で書きます。</p>
+<p>手続きの最後には自動的に挿入されるので書かなくてもよいですが、手続き中のどこででも使用することが出来ます。 (一部の処理系では <span class='reserved'>FOR</span> ループ内で使ってはいけません。)</p>
+<p>関数の定義内では必ず 1 つ以上使う必要があります。 (コンパイル時にチェックされないことに注意してください。 また、 <span class='reserved'>FOR</span> ループ内で使ってはいけません。)</p>
+<p>関数内で <span class='reserved'>RETURN</span> 文を通過せずに終端 (関数の定義の終りを表す <span class='reserved'>END</span>) に行き当たった場合の挙動は未定義です。</p>
+
+<h3>FOR</h3>
+<p>単変数の値を変化させながら繰返しする処理を表します。</p>
+<pre class='form'>
+<span class='reserved'>FOR</span> <span class='metavar'>単変数</span> := <span class='metavar'>式</span> <span class='reserved'>TO</span> <span class='metavar'>式</span> <span class='reserved'>DO</span> <span class='metavar'>実行文</span>
+</pre>
+<pre class='form'>
+<span class='reserved'>FOR</span> <span class='metavar'>単変数</span> := <span class='metavar'>式1</span> <span class='reserved'>DOWNTO</span> <span class='metavar'>式2</span> <span class='reserved'>DO</span> <span class='metavar'>実行文</span></pre>
+<p>カウント用の <span class='metavar'>単変数</span> に式の値を代入し、 <span class='metavar'>単変数</span> を 1 ずつ増加または減少させながら実行文を繰返します。</p>
+<p><span class='metavar'>単変数</span> の増分は、 <span class='reserved'>TO</span> を用いたとき +1 、 <span class='reserved'>DOWNTO</span> を用いたときは -1 です。 (一部の処理系では <span class='reserved'>DOWNTO</span> を使えません。)</p>
+
+<h3>REPEAT</h3>
+<pre class='form'><span class='reserved'>REPEAT</span> <span class='metavar'>文リスト</span> <span class='reserved'>UNTIL</span> <span class='metavar'>式</span></pre>
+<p><span class='metavar'>式</span> の値が真値になるまで <span class='metavar'>文リスト</span> を繰返し実行します。 <span class='metavar'>文リスト</span> は 0 個以上の実行文を並べたものです。</p>
+
+<h3>WHILE</h3>
+<pre class='form'><span class='reserved'>WHILE</span> <span class='metavar'>式</span> <span class='reserved'>DO</span> <span class='metavar'>実行文</span></pre>
+<p><span class='metavar'>式</span> の値が偽ならば <span class='metavar'>実行文</span> を実行せずに次の処理へ移ります。</p>
+<p>式の値が真の場合は <span class='metavar'>実行文</span> を実行して再び <span class='metavar'>式</span> の評価に戻ります。</p>
+
+<h3>IF</h3>
+<pre class='form'><span class='reserved'>IF</span> <span class='metavar'>式</span> <span class='reserved'>THEN</span> <span class='metavar'>実行文1</span></pre>
+<pre class='form'><span class='reserved'>IF</span> <span class='metavar'>式</span> <span class='reserved'>THEN</span> <span class='metavar'>実行文1</span> <span class='reserved'>ELSE</span> <span class='metavar'>実行文2</span></pre>
+<p><span class='metavar'>式</span> の値が真なら <span class='metavar'>実行文1</span>を実行します。</p>
+<p><span class='metavar'>式</span> の値が偽であり <span class='reserved'>ELSE</span> 節が省略されていないならば <span class='metavar'>実行文2</span> を実行します。</p>
+<p>式の値が偽であり <span class='reserved'>ELSE</span> 節が省略されているならば何もせずに次の処理へ移ります。 (一部の処理系では <span class='reserved'>ELSE</span> 節は使えません。)</p>
+
+<h3>CASE</h3>
+<pre class='form'>
+
+<span class='reserved'>CASE</span> <span class='metavar'>式0</span> <span class='reserved'>OF</span>
+     <span class='metavar'>式1</span> <span class='metavar'>実行文1</span>
+     ...
+     <span class='metavar'>式k-1</span> <span class='metavar'>実行文k-1</span>
+     <span class='reserved'>ELSE</span> <span class='metavar'>実行文k</span>
+</pre>
+<p><span class='metavar'>式0</span> の値を <span class='metavar'>式1</span> の値と比較して合致すれば <span class='metavar'>実行文1</span> を実行します。 その後は <span class='metavar'>実行文k</span> の次の処理に移ります。</p>
+<p>合致しなければ、同様にして合致するまで次々と式と比較し、合致した式に対応した実行文を実行します。</p>
+<p>式の箇所に予約語 <span class='reserved'>ELSE</span> が有った場合は無条件に合致したものとみなして <span class='metavar'>実行文k</span> を実行します。</p>
+<p><span class='reserved'>CASE</span> 文における <span class='reserved'>ELSE</span> 節は <span class='reserved'>CASE</span> 文の最後の条件であることを示すマーカーでもあるので省略することは出来ません。 <span class='reserved'>ELSE</span> 節に実行すべき実行文がない場合は空文を書いてください。</p>
+<h3>WRITE</h3>
+<pre class='form'>
+<span class='reserved'>WRITE</span> ( <span class='metavar'>式</span> : <span class='metavar'>出力リスト</span> )
+</pre>
+<p>式の値が表す出力装置に対して出力リストの内容を出力します。 数値と出力装置との対応付けについては未定義ですが、一般的に 0 はコンソール画面であるとされています。</p>
+<p>出力リストは以下の出力要素からなり、ひとつ以上の場合はカンマで区切ります。</p>
+<h4>式</h4>
+<p>式を記述します。 十進数左詰めで出力します。</p>
+<h4>右詰め</h4>
+<pre class='form'>
+# ( <span class='metavar'>式1</span> , <span class='metavar'>式2</span> )
+</pre>
+<p><span class='metavar'>式2</span> の値を <span class='metavar'>式1</span> の桁数で十進右詰めで出力します。</p>
+<h4>文字列</h4>
+<pre class='form'>
+&quot; <span class='metavar'>文字列</span> &quot;
+</pre>
+<p>ダブルクォーテーションで囲まれた文字列を出力します。</p>
+<h4>アスキーコード</h4>
+<pre class='form'>
+<span class='reserved'>ASCII</span> ( <span class='metavar'>式</span> )
+</pre>
+<p><span class='metavar'>式</span> で与えられたアスキーコードに相当する文字を出力します。</p>
+<h4>空白</h4>
+<pre class='form'>
+<span class='reserved'>SPACE</span> ( <span class='metavar'>式</span> )
+</pre>
+<p><span class='metavar'>式</span> で与えられた個数分の空白を出力します。 <span class='metavar'>式</span> の値が 0 の場合は何も出力しません。</p>
+<h4>改行</h4>
+<pre class='form'>
+<span class='reserved'>CRLF</span> ( <span class='metavar'>式</span> )
+</pre>
+<pre class='form'>
+<span class='reserved'>CRLF</span>
+</pre>
+<p><span class='metavar'>式</span> で与えられた個数分の改行を出力します。 <span class='metavar'>式</span> の値が 0 の場合は何も出力しません。</p>
+<p><span class='metavar'>式</span> を省略した形式の場合は 1 個の改行を出力します。</p>
+<h4>十六進数</h4>
+<pre class='form'>
+<span class='reserved'>HEX</span> ( <span class='metavar'>式</span> )
+</pre>
+<p><span class='metavar'>式</span> で与えられた値を十六進数 2 桁で出力します。</p>
+<p>一部の処理系では使えません。</p>
+
+<h3>代入</h3>
+<pre class='form'><span class='metavar'>変数</span> := <span class='metavar'>式</span></pre>
+<pre class='form'><span class='metavar'>変数1</span> , <span class='metavar'>変数2</span> , ... , <span class='metavar'>変数k</span> := <span class='metavar'>式</span></pre>
+<p><span class='metavar'>式</span> の値を <span class='metavar'>変数</span> に代入します。</p>
+<p>変数がカンマで区切られたリストの場合は <span class='metavar'>式</span> の値を左辺全ての変数に代入します。</p>
+<p>代入記号はコロンとイコールの 2 語から成っているのでコロンとイコールの間に空白文字が有っても代入記号として認識されますが、一般的には間を空けずに書きます。</p>
+
+<h3>手続き呼出し</h3>
+<p>手続きを呼出します。</p>
+<pre class='form'>
+<span class='metavar'>手続き名</span> ( <span class='metavar'>式</span> ,  <span class='metavar'>式</span> , ...  <span class='metavar'>式</span> )
+</pre>
+<pre class='form'>
+<span class='metavar'>手続き名</span>
+</pre>
+<p>引数をもつ手続きでは実引数を与えて呼出します。 引数を持たない手続きを呼出す場合には丸括弧ごと省略した記法で呼出せますが、引数を持たない手続きを丸括弧を省略せずに記述した場合はエラーです。</p>
+<pre class='example'>
+FOO() % このような呼び方はエラー
+</pre>
+<p>実引数の渡し方はいわゆる値渡しに限定されているので、実引数が変数であっても手続きから戻ったときに値は変化しません。</p>
+
+<h3>CALL</h3>
+<p>機械語サブルーチンを呼出します。</p>
+<pre class='form'>
+<span class='reserved'>CALL</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> , <span class='metavar'>H</span> , <span class='metavar'>L</span> )
+</pre>
+<pre class='form'>
+<span class='reserved'>CALL</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> , <span class='metavar'>H</span> )
+</pre>
+<pre class='form'>
+<span class='reserved'>CALL</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> )
+</pre>
+<pre class='form'>
+<span class='reserved'>CALL</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> )
+</pre>
+<p>各パラメータは以下の意味を持ちます。</p>
+<table>
+<tr><td><span class='metavar'>AH</span></td><td>アドレスの上位 8 ビット</td></tr>
+<tr><td><span class='metavar'>AL</span></td><td>アドレスの下位 8 ビット</td></tr>
+<tr><td><span class='metavar'>A</span></td><td>アキュムレータに与える値</td></tr>
+<tr><td><span class='metavar'>H</span></td><td>80 系 CPU では H レジスタに与える値、 6502 系 CPU では X レジスタに与える値</td></tr>
+<tr><td><span class='metavar'>L</span></td><td>80 系 CPU では L レジスタに与える値、 6502 系 CPU では Y レジスタに与える値</td>
+</tr>
+</table>
+<p><span class='metavar'>A</span>, <span class='metavar'>H</span>, <span class='metavar'>L</span> は省略した形式がありますが、省略した場合はそれぞれの値は不定となります。</p>
+<p>この手続きは一部の処理系では利用できません。</p>
+
+<h3>SENSE</h3>
+<p>PC では STOP キー、 APPLE では cont-C が押されているか否かを検出し、押されていればモニタモードに戻ります。</p>
+
+<h2>変数</h2>
+<p>変数はすべて 1 バイト長です。 以下の 4 種類があります。</p>
+<h3>単変数</h3>
+<p><span class='reserved'>VAR</span> 宣言された英字で始まる英数字の列です。</p>
+<p>大域、小域の区別があります。</p>
+
+<h3>配列変数</h3>
+<pre class='form'><span class='metavar'>配列変数名</span> [ <span class='metavar'>式</span> ]</pre>
+<p><span class='reserved'>ARRAY</span> 宣言された配列の <span class='metavar'>式</span> 番目の要素です。</p>
+<p>大域、小域の区別があります。</p>
+
+<h3>MEM変数</h3>
+<pre class='form'><span class='reserved'>MEM</span> ( <span class='metavar'>式1</span> , <span class='metavar'>式2</span> )</pre>
+<p><span class='metavar'>式1</span> の値を上位、 <span class='metavar'>式2</span> の値を下位のアドレスとするメモリ内の 1 バイト。</p>
+
+<h3>PORT</h3>
+<pre class='form'><span class='reserved'>PORT</span>  (<span class='metavar'>式</span> )</pre>
+<p>PC 版専用です。</p>
+<p>N-BASIC の INP, OUT に相当します。 代入文の左辺にあれば OUT 、 右辺にあれば INP と同等の作用をします。</p>
+
+<h2>式</h2>
+<h3>定数</h3>
+<p><a href='#number'>数値</a>の項で示した 4 種類のいずれかの形式で定数を表します。</p>
+<h3>関数呼出し</h3>
+<pre class='form'><span class='metavar'>関数名</span> ( <span class='metavar'>式1</span> , <span class='metavar'>式2</span> , ... , <span class='metavar'>式k</span> )</pre>
+<pre class='form'><span class='metavar'>関数名</span></pre>
+<p><span class='reserved'>FUNC</span> 宣言によって宣言された関数、または処理系が用意しているシステム関数 (後述) を呼出します。 引数のない関数を呼出す場合は関数名のみで呼出せます。 引数がない関数を括弧付きの書式で呼出そうとした場合はエラーです。</p>
+<pre class='example'>
+FOO := BAR() % このような呼び方はエラー
+</pre>
+<h4>MHIGH</h4>
+<p>1 バイト同士の掛け算の結果は 2 バイトになり得ますが、式の中では下位 1 バイトしか表現されません。 上位 1 バイトは専用の場所に格納されており、 <span class='reserved'>MHIGH</span> 関数で取出すことが出来ます。</p>
+<h4>MOD</h4>
+<p>割り算すると商が返りますが、同時に余が計算されて専用の場所に格納されており、 <span class='reserved'>MOD</span> 関数で取出すことが出来ます。</p>
+<h4>RND</h4>
+<pre class='form'>
+<span class='reserved'>RND</span> ( <span class='metavar'>式</span> )
+</pre>
+<p>1 以上 <span class='metavar'>式</span> 以下の一様乱数を返します。</p>
+<h4>GET</h4>
+<pre class='form'>
+<span class='reserved'>GET</span> ( <span class='metavar'>式</span> )
+</pre>
+<p><span class='metavar'>式</span> が表す入力装置から 1 文字を入力し、そのアスキーコードの値を返します。</p>
+<p>数値と入力装置の対応付けは未定義ですが、一般に 0 はキーボードであるようです。</p>
+<h4>READ</h4>
+<pre class='form'>
+<span class='reserved'>READ</span> ( <span class='metavar'>式</span> )
+</pre>
+<p><span class='metavar'>式</span> の値に対応する入力装置から十進数を 1 つ入力し、その値を返します。 RUBOUT コードは区切り記号とみなされます。</p>
+<h4>NOT</h4>
+<pre class='form'>
+<span class='reserved'>NOT</span> ( <span class='metavar'>式</span> )
+</pre>
+<p>1 の補数を返します。 後述の COM と同じです。</p>
+<h4>NEG</h4>
+<pre class='form'>
+<span class='reserved'>NEG</span> ( <span class='metavar'>式</span> )
+</pre>
+<p>2 の補数を返します。</p>
+<h4>COM</h4>
+<pre class='form'>
+<span class='reserved'>COM</span> ( <span class='metavar'>式</span> )
+</pre>
+<p>1 の補数を返します。</p>
+<h4>LSR</h4>
+<pre class='form'>
+<span class='reserved'>LSR</span> ( <span class='metavar'>式</span> )
+</pre>
+<p>1 ビット右シフトします。 最上位ビットには 0 が入り、最下位ビットはキャリーに入ります。</p>
+<h4>ASR</h4>
+<pre class='form'>
+<span class='reserved'>ASR</span> ( <span class='metavar'>式</span> )
+</pre>
+<p>1 ビット右シフトします。 最上位ビットは変化せず、最下位ビットはキャリーに入ります。</p>
+<h4>ASL</h4>
+<pre class='form'>
+<span class='reserved'>ASL</span> ( <span class='metavar'>式</span> )
+</pre>
+<p>1 ビット左シフトします。 最下位ビットには 0 が入り、最上位ビットはキャリーに入ります。</p>
+<h4>ROR</h4>
+<pre class='form'>
+<span class='reserved'>ROR</span> ( <span class='metavar'>式</span> )
+</pre>
+<p>1 ビット右シフトします。 キャリーは最上位ビットに入り、最下位ビットはキャリーに入ります。</p>
+<h4>ROL</h4>
+<pre class='form'>
+<span class='reserved'>ROL</span> ( <span class='metavar'>式</span> )
+</pre>
+<p>1 ビット左シフトします。 キャリーは最下位ビットに入り、最上位ビットはキャリーに入ります。</p>
+<h4>USR</h4>
+<pre class='form'><span class='reserved'>USR</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> , <span class='metavar'>AH</span> , <span class='metavar'>L</span> )</pre>
+<pre class='form'><span class='reserved'>USR</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> , <span class='metavar'>AH</span> )</pre>
+<pre class='form'><span class='reserved'>USR</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> )</pre>
+<pre class='form'><span class='reserved'>USR</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> )</pre>
+<p>CALL 文と機能は同じですが、機械語サブルーチン実行後のアキュムレータの値を返却値として返します。</p>
+<p>処理系によっては使えません。</p>
+<h4>RDHEX</h4>
+<pre class='form'><span class='reserved'>RDHEX</span> (<span class='metavar'>式</span>)</pre>
+<p>入力装置から十六進数1桁を入力します。</p>
+<p>処理系によっては使えません。</p>
+<h4>RRC</h4
+><pre class='form'><span class='reserved'>RRC</span> (<span class='metavar'>式</span>)</pre>
+<p>キャリーを経由せずに式の値を右に 1 ビットシフトします。 最下位ビットは最上位に入ります。</p>
+<p>処理系によっては使えません。</p>
+<h4>RLC</h4>
+<pre class='form'><span class='reserved'>RLC</span> (<span class='metavar'>式</span>)</pre>
+<p>キャリーを経由せずに式の値を左に 1 ビットシフトします。 最上位ビットは最下位ビットに入ります。</p>
+<p>処理系によっては使えません。</p>
+<h3>二項演算子</h3>
+<p>左右に 2 個の項をとって計算する演算子です。</p>
+<pre class='form'><span class='metavar'>項1</span> <span class='metavar'>演算子</span> <span class='metavar'>項2</span></pre>
+<p>演算子の優先順位は表の通りです。 優先順位の同じ演算子は左結合します。</p>
+<table>
+<tr><td>①</td><td>乗除算演算子</td></tr>
+<tr><td>②</td><td>加減算演算子</td></tr>
+<tr><td>③</td><td>関係演算子</td></tr>
+<tr><td>④</td><td>論理演算子</td></tr>
+<tr><td>⑤</td><td>キャリー付き加減算演算子</td></tr>
+</table>
+<p>優先順位を変更したい場合は式括弧を使用します。 以下 3 種類の括弧が式括弧として使えますが標準的には丸括弧を用いることとします。</p>
+<pre class='form'>{ <span class='metavar'>式</span> }</pre>
+<pre class='form'>[ <span class='metavar'>式</span> ]</pre>
+<pre class='form'>( <span class='metavar'>式</span> )</pre>
+<p>記号ではなく識別子の演算子については空白文字と解釈されるピリオドを両側に置く習慣があります。 私見ですが、関数呼出しとの区別をしやすくする工夫だと考えられます。</p>
+<pre class='example'>.<span class='reserved'>AND</span>.</pre>
+
+<h4>乗除算演算子</h4>
+<table>
+<tr><td>*</td><td>乗算</td></tr>
+<tr><td>/</td><td>除算の商</td></tr>
+</table>
+
+<h4>加減算演算子</h4>
+<table>
+<tr><td>+</td><td>加算</td></tr>
+<tr><td>-</td><td>減算</td></tr>
+</table>
+
+<h4>関係演算子</h4>
+<p>2 つの値を比較して真偽値を返します。 <span class='reserved'>GT</span> と <span class='reserved'>LT</span> は左右の数値を 2 の補数表現の符号付き二進数とみなして比較します。 その他の演算子は数を符号なし二進数と解釈します。</p>
+<table>
+<tr><td>&gt;</td><td>大きい</td></tr>
+<tr><td>&lt;</td><td>小さい</td></tr>
+<tr><td>#</td><td>等しくない</td></tr>
+<tr><td>=</td><td>等しい</td></tr>
+<tr><td><span class='reserved'>GT</span></td><td>大きい</td></tr>
+<tr><td><span class='reserved'>LT</span></td><td>大きい</td></tr>
+</table>
+
+<h4>論理演算子</h4>
+<table>
+<tr><td class='reserved'>AND</td><td>論理積</td></tr>
+<tr><td class='reserved'>OR</td><td>論理和</td></tr>
+<tr><td class='reserved'>EOR</td><td>排他的論理和</td></tr>
+</table>
+
+<h4>キャリー付き加減算演算子</h4>
+<p>二項を足した上でキャリーの値を足す、または二項を減算した上でキャリーの値を引く演算子です。</p>
+<table>
+<tr><td class='reserved'>ADC</td><td>キャリー付き加算</td></tr>
+<tr><td class='reserved'>SBC</td><td>ボロー付き減算</td></tr>
+</table>
+<p>システム関数の一部がフラグを変化させることが明記されている他はどの処理がフラグを変化させるかは未定義です。 一般に加減算はフラグを変化させるようですが、処理系によっては配列要素へアクセスしたときに変化させてしまう場合もあるようです。 キャリー付き加減算は加減算の直後に限って使うのが安全であると考えられます。</p>
+</body>
+</html>

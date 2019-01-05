@@ -440,6 +440,7 @@ int scanchar()
 {
  int t;
  srcptr++;
+ if (*srcptr=='\\')srcptr++;
  t=*srcptr;
  if(t)srcptr++;
  if (*srcptr=='\'')srcptr++;
@@ -659,7 +660,7 @@ char opsize; /*desired operand size 0=dunno,1=5,2=8,3=16*/
 short operand;
 unsigned char postbyte;
 
-int dpsetting;
+int dpsetting = 0;
 
 
 int scanindexreg()
@@ -799,7 +800,7 @@ scanoperands()
  case '#':
   if(mode==5)seterror(2);else mode=0;
   srcptr++;
-  if (*srcptr=='"') {
+  if (*srcptr=='"') { // ??
       operand = (srcptr[1]<<8) + srcptr[2] ;
       srcptr += 3;
       break;
@@ -824,8 +825,8 @@ scanoperands()
    scanindexed();
   } else {
    if(opsize==0) {
-    if(unknown||!certain||dpsetting==-1||
-         (unsigned short)(operand-dpsetting*256)>=256)
+    if(unknown||dpsetting==-1||    // omit !certain
+         ((((operand&0xff00)>>8))!=dpsetting))
     opsize=3; else opsize=2;
    }
    if(opsize==1)opsize=2;
@@ -1277,6 +1278,7 @@ pseudoop(int co,struct symrecord * lp)
  case 7:/* FCB */
         generate();
         setlabel(lp);
+fcb:
         do {
         if(*srcptr==',')srcptr++;
         skipspace();
@@ -1298,8 +1300,9 @@ pseudoop(int co,struct symrecord * lp)
         skipspace();
         c=*srcptr++;
         while(*srcptr!=c&&*srcptr)
-         putbyte(*srcptr++);
+          putbyte(*srcptr++);
         if(*srcptr==c)srcptr++;
+        if(*srcptr==',') goto fcb;
         break;
  case 9:/* FDB */
         generate();

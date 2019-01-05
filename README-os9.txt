@@ -43,6 +43,8 @@ You can add os9 disk image using -0 or -1 option ( ex. https://github.com/sorenr
 
     src/v09c -rom src/os9/os9lv2.rom -0 OS9.dsk -1 WORK.dsk 
 
+use -nt for trace debug without timmer interrupt.
+
 
 Structure
 ---------
@@ -158,11 +160,40 @@ os9 command
    src/os9/level1/cmds
    src/os9/level2/cmds
 
-   game09   VTL interpreter on os9
    sbc09    sbc09 emulator on os9
-       OS9: sbc09 ../../../examples_forth/kernel09
+       OS9: sbc09 kernel09.s
+       OS9: sbc09 basic.s
 
    Todo ( program load command on game09 and forth )
+
+================
+
+Micro C
+-------------
+   src/os9/mc09
+      only working on level2
+
+   OS9: mc09/mc-s -Mtestcp test/cp.c
+        
+   % src/a09 crtos9.asm -l c.lst -o testcp
+
+
+GAME09
+-------------
+   game09  
+   src/os9/level[12]/game09
+
+   OS9: game09
+
+   > \LD "game09/asm09.game"
+   > #=1
+
+TL/1
+-------------
+    TL/1
+
+   OS9: tl1 tl1/test/t1.tl1
+
 
 Links/References
 ================
