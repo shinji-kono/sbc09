@@ -159,6 +159,8 @@ void do_escape(void) {
                 int watch = mem[b->address];
 #endif
                 if (ppc==b->address || b->watch != watch  ) {
+                    if (b->watch != watch)
+                        printf("%04x : %02x -> %02x ",b->address, b->watch ,watch);
                     b->watch = watch;
                     if (b->count==-1) {  // temporaly break point
                         BPTR next = b->next;

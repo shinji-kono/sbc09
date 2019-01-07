@@ -41,7 +41,7 @@ __0C004
         bcc     __0C005
         ldd      ,s
         subd     #$1000
-        blo      exit           can't get any memroy
+        lblo      exit           can't get any memroy
         std      ,s
         bra     __0C004
 __0C005
@@ -76,7 +76,7 @@ _0C003
         std     heapp,y
 	LBSR	_INITIALIZE	call initializer
 	LBSR	_main
-exit	clrb
+* exit	clrb
 	os9     F$Exit
 
 

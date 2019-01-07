@@ -4,17 +4,16 @@
 int errno  = 0;
 
 typedef	struct {
-    int fd;                   /*  0 */
-    int fmode;                 /*  2 */
-    int len;                  /*  4 */
-    char *fname;               /*  6 */
-    /*
-    char *ptr;        /*  8 
-    char buff[256];       /*  10/
-    */
+    int fd;           /*  0 */
+    int fmode;        /*  2 */
+    int length;       /*  4 */
+    char *fname;      /*  6 */
+    char *ptr;        /*  8  */
+    char *buf;        /*  10 */
  } FILE ;
 
 #define	FCBSIZE	(sizeof(FILE))
+#define BUFSIZ 256
 
 #define	NFILES	8
 
@@ -29,20 +28,16 @@ FILE *_fcbtbl[NFILES];
 
 FILE _s0[3];
 
-#define STDIN (&_s0[0])
-#define STDOUT (&_s0[1])
-#define STDERR (&_s0[2])
-
 _main(prog,args)
 char *prog;
 char *args;
 {int i;
  char **argv,*p,*q;
  int argc,n,quote,c;
-	stdin = STDIN;  stdin->fd = 0;
-	stdout = STDOUT;  stdout->fd = 1;
-	stderr = STDERR;  stderr->fd = 2;
 	initheap();
+        stdin  = (FILE*) malloc(sizeof(FILE));  initfp(stdin,0);
+        stdout = (FILE*) malloc(sizeof(FILE));  initfp(stdout,1);
+        stderr = (FILE*) malloc(sizeof(FILE));  initfp(stderr,2);
 	for ( i = 3; i < NFILES; i++ ) _fcbtbl[i] = NULL;
         /* create argv here */
         argc = 0;
@@ -82,7 +77,32 @@ char *args;
             argc = n;
         }
         argv[n]=0;
-	main(argc,argv);
+	exit(main(argc,argv));
+}
+
+
+exit(e)
+int e;
+{
+    int i;
+    for ( i = 3; i < NFILES; i++ ) {
+        if (_fcbtbl[i])
+            fclose(_fcbtbl[i]);
+    }
+#asm
+    ldb     4,u
+    os9     F$Exit
+#endasm
+}
+
+initfp(fp,d)
+FILE *fp;
+int fd;
+{
+    fp->fd = d;
+    fp->buf = (char*)malloc(BUFSIZ+1);
+    fp->ptr = fp->buf;
+    fp->fname = fp->length = fp->fmode =  0;
 }
 
 FILE *fopen(name,mode)
@@ -140,9 +160,9 @@ _LC0001
 _LC0002
         puls      x,y,u
 #endasm
-	if (fcbp->fd < 0 ) { errno = fcbp->fmode ; return NULL; }
-	/* fcbp->ptr = fcbp->buff;
-	fcbp->len = 0; */
+	if (fcbp->fd < 0 ) { errno = fcbp->fmode ; *mfree(fcbp); return NULL; }
+        initfp(fcbp,i);
+        fcbp->fmode = cm;
 	return (_fcbtbl[i] = fcbp);
 }
 
@@ -179,9 +199,9 @@ _LC0003
 _LC0004
         puls      x,y,u
 #endasm
-	if (fcbp->fd < 0 ) { errno = fcbp->fmode ; return NULL; }
-	/* fcbp->ptr = fcbp->buff;
-	fcbp->len = 0; */
+	if (fcbp->fd < 0 ) { errno = fcbp->fmode ; mfree(fcbp); return NULL; }
+        initfp(fcbp,i);
+        fcbp->fmode = cm;
 	return (_fcbtbl[i] = fcbp);
 }
 
@@ -191,8 +211,9 @@ FILE *fcbp;
 	for ( i = 0; i < NFILES; i++ )
 		if ( fcbp == _fcbtbl[i] ) break;
 	if ( i >= NFILES ) return EOF;
-	_fcbtbl[i] = NULL;
-	if ( (fcbp == STDIN) || (fcbp == STDOUT) || (fcbp == STDERR) ) return 0;
+        if ((fcbp->fmode&3) && fcbp->ptr!=fcbp->buf) {
+            fflush(fcbp);
+        }
 #asm
         pshs      x,y,u
         ldx       4,u
@@ -200,7 +221,9 @@ FILE *fcbp;
         os9       I$Close
         puls      x,y,u
 #endasm
-	mfree(fcbp);
+	_fcbtbl[i] = NULL;
+	if (fcbp->buf) mfree(fcbp->buf);
+	mfree(fcbp); 
 	return 0;
 }
 
@@ -213,39 +236,69 @@ char *name; FILE *fcbp;
 
 
 getc(fcbp)
-char *fcbp;
+FILE *fcbp;
 {
-    int c;
+    int len;
+    char *buff;
+    if (fcbp->buf) {
+       if (fcbp->ptr < fcbp->buf+fcbp->length) {
+           return (*fcbp->ptr++)&0xff;
+       }
+       len = BUFSIZ; fcbp->ptr = buff = fcbp->buf;
+    } else {
+        len = 1 ; fcbp->ptr = buff = &len;
+    }
 #asm
         pshs      y
-        ldx       4,u         
+        ldx       4,u       FILE
         lda       1,x       file descriptor
-        leax      -1,u
-        clr       -2,u
-        ldy       #1
+        ldx       -4,u      buf
+        ldy       -2,u      len
         os9       I$Read
-        bcc       _LC0005
-        ldd       #-1
-        std       -2,u
-_LC0005
+        sty       -2,u      len
         puls      y
 #endasm
+    if (len<=0) { fcbp->length=0; return -1; }
+    fcbp->length=len;
+    return (*fcbp->ptr++)&0xff;
+}
+
+fflush(fcbp)
+FILE *fcbp;
+{	
+    int len;
+    char *buff;
+    if (fcbp->buf==0)
+       return;
+    len = fcbp->ptr - fcbp->buf;
+    if (len==0) return;
+    buff = fcbp->buf;
+#asm
+        pshs      y
+        ldx       4,u       FILE
+        lda       1,x       file descriptor
+        ldx       -4,u
+        ldy       -2,u
+        os9       I$Write
+        sty       -2,u
+        puls      y
+#endasm
+    fcbp->ptr = fcbp->buf;
 }
 
 putc(c,fcbp)
-char c,*fcbp;
+char c; FILE *fcbp;
 {	
-    int ret;
-#asm
-        pshs      y
-        ldx       6,u         
-        lda       1,x       file descriptor
-        leax      5,u
-        ldy       #1
-        os9       I$Write
-        puls      y
-#endasm
-     return c;
+    int len;
+    if (!fcbp->buf) {
+        fcbp->buf=&c; fcbp->ptr=fcbp->buf+1;
+        fflush(fcbp);
+        fcbp->buf = 0;
+        return;
+    } else if (fcbp->ptr >= fcbp->buf+BUFSIZ)  {
+        fflush(fcbp);
+    }
+    *fcbp->ptr++ = c;
 }
 
 getchar()

@@ -31,7 +31,7 @@ DBUF   RMB 3
 XR     RMB 2
 YR     RMB 2
 ZR     RMB 2
-PFTBEG RMB 2
+PFTBEG RMB 2     prog/func table
 PC     RMB 2
 SREG   RMB 2
 SP     RMB 2
@@ -40,43 +40,44 @@ LSW    RMB 1
 SY     RMB 1
 CH     RMB 1 
 VAL    RMB 1 
-GL     RMB 1 
+GL     RMB 1     global 0xff / local 1
 OPER   RMB 1 
-GLL    RMB 1 
-INDEX  RMB  1
-RMCODE RMB 1
+GLL    RMB 1     left value g 0xff / local l 
+AMODE  RMB 1
 ACC    RMB 1
 LSIZE  RMB 1
-TCOUNT RMB 1 
-TEND   RMB 2 
-WEND   RMB 2
-AMODE  RMB 1     0x20 main,  1 proc, 0 ?
-RSW    RMB 1
-GEND   RMB 2
-SSW    RMB  1
+TCOUNT RMB 1     1 search reserved word only, 5 search all local/global var/array, proc
+TEND   RMB 2     table end (search start from here ) include local name
+WEND   RMB 2     word end
+PMODE  RMB 1     0x20 main,  1 proc, 0 ?
+RSW    RMB 1     0 word lookup, 0xff word register mode in tlook
+GEND   RMB 2     end of global name
+SSW    RMB 1
+
+filepath rmb   2
+parmptr  rmb   2
+stdin    rmb   2
+adr      rmb   2
+work     rmb   2
+bufsiz   equ   $100-1
 
 **
 * LIBRARY ADDRESSS TABLE
 **
 LIBR     equ   .
 ioentry  rmb   $80
-filepath rmb   2
-parmptr  rmb   2
-stdin    rmb   1
-adr      rmb   2
-work     rmb   2
-readbuff rmb   $100
+readbuff rmb   bufsiz+1
 
-OBJSTART RMB 2
+OBJSTART RMB 2+12
 
 
 * OBJECT PG AREA
 
-WTBLE  RMB $500+$100
-MSTACK RMB $140 
+WTBLE    RMB $100+500
+MSTACK   RMB $140 
 
-OBJECT RMB 2048        * NOP
-RUB equ 8
+OBJECT   RMB 2048        * NOP
+RUB      equ 8
 
 size   equ .
 
@@ -87,8 +88,8 @@ name     fcs   /TL1/
 COMP   CLRA
        STA OUTDN
        STA LSW
-       STA INDEX
        STA AMODE
+       STA PMODE
        STA LSIZE
        STA RSW
        STA PFMAX
@@ -101,7 +102,7 @@ C1     STA ,X+
        DECB
        BNE C1
        INCA
-       STA TCOUNT
+       STA TCOUNT   = 1
        LDA #' '
        STA CH
 **  copy reserved word table
@@ -138,7 +139,7 @@ PLOOP  LDA  SY
        CMPA #$4
        BCC ERR4
        DECA
-       STA  AMODE
+       STA  PMODE
        LDA VAL
        LBSR DEFPF
        LBSR PUTHSL
@@ -153,10 +154,10 @@ PLOOP  LDA  SY
        LDA #$3B       )
        LBSR CHECK
 PL1    BSR PROG
-*       LDB AMODE
-*       CMPB #1
-*       BNE *+5
-       LBSR RETP
+       LDB PMODE
+       CMPB #1
+       BNE *+5
+       LBSR RETP     generate return
        LDX GEND 
        STX TEND
        LDB #5
@@ -177,7 +178,7 @@ REGNAM COM RSW
        LBSR WORD
        LDB RSW
        BEQ *+5
-ERR4   LBRA ERROR
+ERR4   LBRA ERROR    define duplicate name 
        LDX TEND
        LDA LSIZE
        STA ,X
@@ -185,7 +186,7 @@ ERR4   LBRA ERROR
        LDX WEND
        STX TEND
        BSR WORD1
-       CMPA #$36     [
+       CMPA #$36    "["   array
        BNE REG2
        BSR WORD1
        BNE ERR4
@@ -202,13 +203,11 @@ REG2   CMPA #$3C    "," get next word
 **
 PROG   CMPA #$32 VAR?
        BNE *+4
-       BSR REGNAM
-       BSR REG0
+       BSR REGNAM    global variable
+       BSR REG0      put mark
        CMPA #$33 ARRAY?
        BNE *+4
        BSR REGNAM
-       LDB #-1 
-       STB INDEX
 **
 *  STATEMENT 
 **
@@ -238,7 +237,7 @@ SS1    CMPA #$34   BEGIN
        CMPA #$38   END
        BCC SS2
        ADDA #4
-       PSHS A
+       PSHS A      wait for END
        BSR WORD1
        BSR STLIST
        PULS A
@@ -261,7 +260,7 @@ STPOUT LBSR PUTHSL
 **
 SS3    CMPA #$51
        BNE SS4
-       LDB AMODE
+       LDB PMODE
        LBEQ ERR4
        PSHS B
        BSR WORD1
@@ -336,21 +335,18 @@ AS3    PULS D
        LBSR  PUTX 
        LDA   #$A7 
        LDB   OPER 
-       LBRA  PUTAB
+       LBRA  PUTOFS
 AS4      DECA 
        BNE   AS5
-       LBSR  PUTX 
-       LDA   #$33 
-       LBSR  PUTA 
-       LBRA  STABX 
+       LDD   #$3504          PULS B
+       LBSR  PUTAB
+       LBSR  PUTX            STA B,X / STA B,Y
+       LDD   #$A785           
+       LBRA  PUTAB
 AS5    LBSR  PUTHS
-       FCB  10
-       FDB   $33D7 
-       FCB   WT2
-       FDB   $33D7
-       FCB   WT1 $9E,WT2
-       FDB   $A700 
-       CLR   INDEX
+       FCB   4
+       FDB   $3510           PULS X
+       FDB   $A700           STA ,X
        RTS
 **
 ** NON-STATEMENT
@@ -371,7 +367,6 @@ SS6    CMPA #$58
 **
        DECB
        BNE SS7
-       STB INDEX
        BSR ASTOUT
        LBSR STLIST
        LDA #$60
@@ -402,9 +397,8 @@ SS7    DECB
        LDA #$64       do
        LBSR CHECK
        BSR ASTOUT
-       LDD   #$3402     pshs a
+       LDD  #$3402     pshs a
        LBSR PUTAB
-       CLR   INDEX
        LBSR STAT
        LDD  #$3502      puls a
        LBSR PUTAB
@@ -426,7 +420,6 @@ ASTOUT LBRA PSHDEF
 **
 SS8    DECB
        BNE SS9
-       STB INDEX
        BSR ASTOUT
        LBSR EXPR
        LDA #$64
@@ -435,11 +428,7 @@ SS8    DECB
        FCB 2
        FDB $2603
        BSR SLAOUT 
-       LDB INDEX 
-       PSHS B
        LBSR STAT
-       PULS B
-       STB INDEX
        BSR PEROUT 
        BSR MINOUT
 PLUOUT LBRA PULDEF
@@ -455,13 +444,7 @@ SS9    DECB
        FCB 2
        FDB $2603
        BSR SLAOUT 
-       LDB INDEX
-       PSHS B
        LBSR STAT
-       PULS B
-       CMPB INDEX 
-       BEQ *+4
-       CLR INDEX 
        BRA PLUOUT 
 SLAOUT LBRA PSHJMP
 PEROUT LBRA STCHG
@@ -483,14 +466,10 @@ S10A   INCB
        FCB 2
        FDB $2703
        BSR SLAOUT
-       LDB INDEX
-       PSHS B
        LBSR STAT
        BSR SLAOUT
        BSR PEROUT
        BSR PLUOUT
-       PULS B
-       STB INDEX 
        PULS B
        LDA SY
        CMPA #$67
@@ -498,7 +477,6 @@ S10A   INCB
        PSHS B 
        LBSR WORD
        LBSR STAT
-       CLR INDEX
        PULS A
        LBRA PLDFN 
 **
@@ -534,7 +512,6 @@ WR01   CMPA #'"'     copy until '"'
        LBSR GETCH
        BRA WR01
 WR02   CLRA          put 0 at end
-       STA INDEX
        LBSR PUTA
        LBSR GETCH
        LBRA WORD
@@ -585,7 +562,7 @@ WR6    LBSR EXPR
        LBSR PUTHSL
        FDB $03BD
        FDB PUTDA
-WR66   CLR INDEX
+WR66   
 RTS11  RTS
 **
 * PUTX & PUTB
@@ -595,14 +572,35 @@ PUTABX PSHS D
        PULS D 
        BRA PUTAB
 **
-* PUT LB, OR GB BY INDEX
+* use X for LB, OR use Y for GB BY 
 **
-PUTX   LDB GLL 
-       CMPB INDEX 
-       BEQ RTS11 
-       STB INDEX 
-       ADDB #LB+1
-       LDA #$9E 
+PUTX   equ RTS11     * no pointer load
+**
+PUTOFS PSHS D,X
+       LDX <PC
+       STA ,X+
+       CLRA
+       TST  <GLL
+       BMI  PUTOFSX
+       LDA  #$20
+PUTOFSX STA ,S
+       CMPB #32
+       BGT  *+6
+       CMPB #-32
+       BGE  PUTOFS5
+       LDA  #$80
+       ORA  ,S
+       STA  ,X+
+       STB  ,X+
+       BRA  PUTOFS8
+PUTOFS5
+       ANDB #$1F
+       ORB   ,S
+       STB   ,X+
+PUTOFS8
+       STX  <PC
+       PULS D,X,PC
+
 ***
 * PUT ACC A&B
 **
@@ -611,10 +609,9 @@ PUTAB  BSR PUTA
 **
 * PUT ACCA RS AN OBJECT
 **
-PUTA   STX RNDH
+PUTA   PSHS X
        LBSR AOUT
-       LDX RNDH
-       RTS
+       PULS X,PC
 **
 * PUTHS STRING
 **
@@ -705,9 +702,9 @@ WD41   SUBA #'0'
        STA VAL
        BRA WD40
 **
-* TEST ALPHA NUMERIC
-TSTNA  CMPA #'0'
-       BCS NAF
+* TEST ALPHA NUMERIC   Z=0 C=0 Not Number/Not Alpha
+TSTNA  CMPA #'0'       Z=1 C=1 Number
+       BCS NAF         Z=0 C=1 Not Number/Alpha
        CMPA #'9'+1
        BCS NT
        CMPA #'A'
@@ -740,23 +737,29 @@ WD6    LDX TEND
        LEAX 1,X
        BSR STAONE
        PULS A
-       BSR TSTNA
+       BSR TSTNA   first word must alpha
        BCC TLOOK1
 WD61   LDA CH
-       BSR TSTNA
+       BSR TSTNA   alpha numeric?
        BCS *+4
        BNE TLOOK1
        BSR STAONE
        BRA  WD61
-STAONE STA ,X+
+STAONE STA ,X+     store to the table
        STX WEND
        BRA GETCH 
-TLOOK1 LDA RSW
-       BEQ TLOOK
+TLOOK1 LDA RSW     word end
+       BEQ TLOOK   let's search
        COM RSW
        RTS
 **
 * WORD TABLE SEARCH
+*
+*  if not find then error
+*  on return    X point last of word (VAL)
+*          SY    7 larray 6 lvar 5 garray 4 gvar 3 func or proc 0 reserved word
+*          VAL   word id or size
+*          GL    1 local 0xff global
 **
 TLOOK  PSHS U
        LDA TCOUNT 
@@ -785,10 +788,10 @@ S06    TSTA
        BNE *+6
        TFR B,A 
        BRA S07 
+       LDB  #1
        CMPA #4 
        BCS  RTSS
-       LDB  #1
-       TST AMODE
+       TST PMODE
        BEQ *+6
        CMPA #6
        BCS *+3 
@@ -835,7 +838,7 @@ LE2    PULS A
 **
 * RELATIONAL EXPRESS 
 **
-REXPR  BSR AEXPR
+REXPR  LBSR AEXPR
 RE1    LDA SY
        CMPA #$21 
        BCS      RTE 
@@ -867,10 +870,10 @@ PUTA1  LBRA PUTA
 OLOAD  LDA LSW 
        BEQ RTE 
        LDA ACC
-       BEQ *+6 
-       LDA #$36
-       BSR PUTA1 
-       LDA #$86
+       BEQ OL1
+       LDD #$3402  pshs a
+       LBSR PUTAB 
+OL1    LDA #$86
 OCORD  PSHS A
        CLRA
        STA LSW
@@ -883,16 +886,22 @@ OCORD  PSHS A
        CLR LSW
        PULS A
        ADDA AMODE
+       CMPA #$A6
+       BEQ OCOFS
+       CMPA #$E6
+       BEQ OCOFS
        LDB OPER
        LBRA PUTAB
+OCOFS  LDB OPER
+       LBRA PUTOFS
 * PUT 'TAB:PULS A'
 PUTPUL LBSR PUTHS
-       FCB 2
-       FDB $1632
+       FCB 4
+       FCB $1f,$89,$35,2     tfr a,b ; puls a
 RTE1   RTS 
 * PUT 'PULS B'
-PUTPLB LDA #$33
-       BRA PUTA1
+PUTPLB LDA #$3504 puls b
+       LBRA PUTAB
 **
 *  ADDING EXPRESSION
 **
@@ -906,7 +915,7 @@ AE2    PSHS A
        LBSR WORD
        BSR MEXPR
        PULS A
-       BSR AOPER
+       LBSR AOPER
        BRA AE1
 **
 *  MUTIPLYING EXPRESSION
@@ -1019,7 +1028,6 @@ PFC2       INC LSIZE
         LBSR CHECK 
 PFC1   LDB #-1 
         STB ACC 
-        STB INDEX 
         LDA #$86 
         LDB LSIZE
        LBSR PUTAB
@@ -1041,8 +1049,8 @@ PFC4   LDA #$BD
 OLP    LBSR OLOAD
        LDB ACC 
        BEQ RTS4
-       LDA #$36 
-       LBSR PUTA
+       LDD #$3402     pshs a
+       LBSR PUTAB
        CLR ACC 
 RTS4   RTS
 ** FUNCTION RND
@@ -1140,7 +1148,6 @@ TM9    CMPA #6
        FDB $3297
        FCB WT1,$9E,WT1
        FDB $A600
-       CLR INDEX 
        RTS
 ** FOR EXPANTION
 TM10   LBRA ERROR
@@ -1434,7 +1441,7 @@ WTBLEND
 **
 ** OBJECT START
 ******
-C      leas MSTACK,u
+C      leas OBJECT,u
 VARPTR LDX <PC
        STX GB
        STX LB
@@ -1449,18 +1456,16 @@ OBJMP  JMP OBJECT,u
 **
 * PUSH LB & SET NEW LB
 **
-PSHLB  LDX  LB
+PSHLB  pshs y
+       leay ,x
        leax a,x
-       LDD LB
-       STD ,X++
-       STX LB
-       RTS
+       sty ,x++
+       puls y,pc
 **
 * PULL LB
 **
-PULLB  LDX LB
-       LDX ,--X
-       STX LB
+*  
+PULLB  LDX ,--X
        TSTA
        RTS
 **
@@ -1522,6 +1527,7 @@ MULT   MUL
 **
 PUTDA  CLRB
 PUTDR  STB DREG
+       PSHS X
        LEAX -2,S
        LEAS -6,S
        CLR 1,X
@@ -1554,7 +1560,7 @@ PRX    LDA ,X
        LEAX 1,X 
        BRA PRX 
 P4     LEAS 6,S
-CL1    RTS
+CL1    PULS X,PC
 ** 
 * GET IN A DECIMAL
 ** 
@@ -1626,11 +1632,10 @@ start    clr   <stdin
          lbcs   L0049            branch if error
          sta   <INDN            else save path to file
          stx   <parmptr         and updated parm pointer
-*         ldx   <parmptr         get param pointer
-*         lda   ,x               get char
-*         cmpa  #C$CR            end of command line?
-*         bne   start            branch if not
-         lbra comp
+         leax  readbuff,u       buffer 
+         clr   ,x               buffer empty
+         stx   <adr
+         lbra  comp
 
 copytbl
          pshs  y,x,u
@@ -1685,27 +1690,36 @@ L0049
         bra     Exit
 
 
+PUTCA   tfr         a,b
+putchar                        * Output one character in B register.
+        PSHS        X,Y
+        BRA         OUTCH1
+
 close
          lda   <INDN        else get path
          os9   I$Close          and close it
          bcs   L0049            branch if error
          rts
 
-PUTCA   tfr         a,b
-putchar                        * Output one character in B register.
-        PSHS        X,Y
-        BRA         OUTCH1
-
 MEMIN
         PSHS        A,B,X,Y
+        ldx         <adr
+        lda         ,x+
+        bne         GETCA1
         LDA         INDN
-        LEAX        ,S
-        LDY         #1
+        LEAX        readbuff,u
+        LDY         #bufsiz
         OS9         I$Read
         BCC         GETCA0
         lda         #'/'
+        ldx         <adr
+        bra         GETCA1
+GETCA0  LEAX        readbuff,u
+        tfr         y,d
+        clr         d,x      eof
+        lda         ,x+
+GETCA1  stx         <adr
         sta         ,s
-GETCA0
         PULS        A,B,X,Y,PC
 
 GETCA   bsr         getchar

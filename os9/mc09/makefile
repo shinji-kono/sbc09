@@ -15,7 +15,7 @@ all:	mc2 testcp
 mc: mc.c
 	cc $(CFLAGS) mc.c -o mc
 
-mc2:	mc mc2.c mclib.c
+mc2:	mc mc2.c mclibos9.c
 	./mc -s -Mmc mc2.c
 	$(AS09) crtos9.asm -l mc2.lst -o mc2
 
@@ -35,7 +35,7 @@ diff_to_mc2: mc.c mc2.c
 mc2.c:
 	patch <diff_to_mc2 -o mc2.c
 
-testcp : mc test/cp.c
+testcp : mc test/cp.c crtos9.asm mclibos9.c
 	./mc -s -Mtestcp test/cp.c
 	$(AS09) crtos9.asm -l c.lst -o testcp
 
