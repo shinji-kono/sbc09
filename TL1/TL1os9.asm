@@ -45,7 +45,9 @@ OPER   RMB 1
 GLL    RMB 1     left value g 0xff / local l 
 AMODE  RMB 1
 ACC    RMB 1
-LSIZE  RMB 1
+LSIZE  RMB 1     local variable size (including arguments )
+MXLSZ  RMB 1     maximul local variable size
+LSZADR RMB 2     where to write MXLSZ
 TCOUNT RMB 1     1 search reserved word only, 5 search all local/global var/array, proc
 TEND   RMB 2     table end (search start from here ) include local name
 WEND   RMB 2     word end
@@ -68,7 +70,7 @@ LIBR     equ   .
 ioentry  rmb   $80
 readbuff rmb   bufsiz+1
 
-OBJSTART RMB 2+12
+OBJSTART RMB 2+9
 
 
 * OBJECT PG AREA
@@ -142,9 +144,10 @@ PLOOP  LDA  SY
        STA  PMODE
        LDA VAL
        LBSR DEFPF
-       LBSR PUTHSL
-       FDB $03BD
-       FDB PSHLB
+       LBSR PUTHS
+       FCB $04
+       FDB $AFE3    stx ,--s
+       FDB $3086    leax a,x
        BSR REG0
        CLR LSIZE
        LBSR WORD
@@ -158,6 +161,9 @@ PL1    BSR PROG
        CMPB #1
        BNE *+5
        LBSR RETP     generate return
+       LDX LSZADR
+       LDB MXLSZ
+       STB ,X
        LDX GEND 
        STX TEND
        LDB #5
@@ -268,9 +274,8 @@ SS3    CMPA #$51
        DECB 
        BEQ RETP
        LBSR EXPR
-RETP   LBSR PUTHSL
-       FDB $037E
-       FDB PULLB
+RETP   LDD #$3590    puls x,pc
+       LBSR PUTAB
        RTS
 **
 * PROC CALL
@@ -332,7 +337,7 @@ AS3    PULS D
        STB  GLL
        TSTA 
        BNE   AS4
-       LBSR  PUTX 
+*      LBSR  PUTX 
        LDA   #$A7 
        LDB   OPER 
        LBRA  PUTOFS
@@ -340,7 +345,7 @@ AS4      DECA
        BNE   AS5
        LDD   #$3504          PULS B
        LBSR  PUTAB
-       LBSR  PUTX            STA B,X / STA B,Y
+*      LBSR  PUTX            STA B,X / STA B,Y
        LDD   #$A785           
        LBRA  PUTAB
 AS5    LBSR  PUTHS
@@ -565,16 +570,9 @@ WR6    LBSR EXPR
 WR66   
 RTS11  RTS
 **
-* PUTX & PUTB
-**
-PUTABX PSHS D
-       BSR PUTX
-       PULS D 
-       BRA PUTAB
-**
 * use X for LB, OR use Y for GB BY 
 **
-PUTX   equ RTS11     * no pointer load
+*PUTX   equ RTS11     * no pointer load
 **
 PUTOFS PSHS D,X
        LDX <PC
@@ -606,6 +604,14 @@ PUTOFS8
 **
 PUTAB  BSR PUTA
        TFR B,A
+**
+* PUTX & PUTB
+**
+PUTABX equ PUTAB
+*      PSHS D
+*      BSR PUTX
+*      PULS D 
+*      BRA PUTAB
 **
 * PUT ACCA RS AN OBJECT
 **
@@ -879,10 +885,10 @@ OCORD  PSHS A
        STA LSW
        COMA
        STA ACC
-       LDA AMODE
-       CMPA #$20
-       BNE *+5
-       LBSR PUTX
+*      LDA AMODE       amode is sometime wrong?
+*      CMPA #$20
+*      BNE *+5
+*      LBSR PUTX
        CLR LSW
        PULS A
        ADDA AMODE
@@ -890,9 +896,9 @@ OCORD  PSHS A
        BEQ OCOFS
        CMPA #$E6
        BEQ OCOFS
-       LDB OPER
+       LDB OPER              imm case
        LBRA PUTAB
-OCOFS  LDB OPER
+OCOFS  LDB OPER              index case
        LBRA PUTOFS
 * PUT 'TAB:PULS A'
 PUTPUL LBSR PUTHS
@@ -998,7 +1004,7 @@ TM4       CMPA #$35
         LBRA CHECK
 ** FUNCTION CALL
 TM5       CMPA #3
-        BMI *+6
+        BEQ *+6
         CMPA #$E0
         BCS TM6
         BSR OLP 
@@ -1009,8 +1015,8 @@ PFCALL LDA VAL
         BNE PFC1 
         LDA LSIZE
         PSHS A 
-        INC LSIZE 
-PFC2       INC LSIZE 
+*        INC LSIZE 
+PFC2    INC LSIZE 
         LBSR WEXPR
         CLRB
         STB ACC 
@@ -1018,6 +1024,7 @@ PFC2       INC LSIZE
         STB    GLL
         LDA #$A7 
         LDB LSIZE 
+        DECB
         LBSR PUTABX 
         LDA SY 
         CMPA #$3C 
@@ -1442,32 +1449,31 @@ WTBLEND
 ** OBJECT START
 ******
 C      leas OBJECT,u
-VARPTR LDX <PC
-       STX GB
-       STX LB
-       lda INDN
+VARPTR lda INDN
        lbsr close
        clra       os9 stdin
        sta INDN
        inca
        sta OUTDN
+       LDX <PC
+       leay ,x
 OBJMP  JMP OBJECT,u
 
 **
 * PUSH LB & SET NEW LB
 **
-PSHLB  pshs y
-       leay ,x
-       leax a,x
-       sty ,x++
-       puls y,pc
+*PSHLB  pshs y
+*       leay ,x
+*       leax a,x
+*       sty ,x++
+*       puls y,pc
 **
 * PULL LB
 **
 *  
-PULLB  LDX ,--X
-       TSTA
-       RTS
+*PULLB  LDX ,--X
+*       TSTA
+*       RTS
 **
 * RND FUNCTION
 **
