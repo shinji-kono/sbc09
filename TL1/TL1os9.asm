@@ -46,8 +46,6 @@ GLL    RMB 1     left value g 0xff / local l
 AMODE  RMB 1
 ACC    RMB 1
 LSIZE  RMB 1     local variable size (including arguments )
-MXLSZ  RMB 1     maximul local variable size
-LSZADR RMB 2     where to write MXLSZ
 TCOUNT RMB 1     1 search reserved word only, 5 search all local/global var/array, proc
 TEND   RMB 2     table end (search start from here ) include local name
 WEND   RMB 2     word end
@@ -70,7 +68,7 @@ LIBR     equ   .
 ioentry  rmb   $80
 readbuff rmb   bufsiz+1
 
-OBJSTART RMB 2+9
+OBJSTART RMB 2+12
 
 
 * OBJECT PG AREA
@@ -161,9 +159,6 @@ PL1    BSR PROG
        CMPB #1
        BNE *+5
        LBSR RETP     generate return
-       LDX LSZADR
-       LDB MXLSZ
-       STB ,X
        LDX GEND 
        STX TEND
        LDB #5
@@ -1635,7 +1630,7 @@ start    clr   <stdin
          stu   <work            save parameter pointer
          lda   #READ.           read access mode
          os9   I$Open           open file
-         lbcs   L0049            branch if error
+         lbcs  ferr             branch if error
          sta   <INDN            else save path to file
          stx   <parmptr         and updated parm pointer
          leax  readbuff,u       buffer 
@@ -1765,6 +1760,18 @@ RSENSE
         ORCC        #1        set carry to indicate ready
 RNSENSE
         PULS        X,Y,D,PC
+
+ferr     clr   <OUTDN
+         ldx   <parmptr
+floop    ldb   ,x+
+         beq   ferr1    
+         cmpb   #$0d
+         beq    floop
+         lbsr   putchar
+         bra   floop
+ferr1    lbsr   putstr
+         fcc  " is not found",0
+         lbra L0049
 
 getline                        * Input line at address in X, length in B.
         PSHS        A,B,X,Y
