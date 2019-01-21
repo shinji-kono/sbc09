@@ -83,7 +83,7 @@ HDDev    equ   *
 *       ELSE
 *         fcc   "/H0/"
 *       ENDC
-ExecDir  fcc   "/V0/CMDS"
+ExecDir  fcc   "/v0/cmds"
          fcb   C$CR
        ENDC
 

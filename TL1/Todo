@@ -1,0 +1,97 @@
+Sun Jan 13 17:22:51 JST 2019
+
+    TL/1 OS-9 command generation
+    Self compiler
+
+    0000: 87CD          module header
+    0002: 0C09          module end
+    0004: 000D          name
+    0006: 1180          tylg,atrv
+    0009: 0AAB          start
+    000B: 0E00          memory size
+       MAIN
+                        leax       ,u
+                        leay       ,u
+                ... TL/1 OBJ
+                LIB     ... support routines
+                       24bit CRC
+           end
+
+Thu Jan 10 12:28:15 JST 2019
+
+    add source code hex listing
+
+    % ** SPRITE TEST PROGRAM **
+    PROC WAIT,TIME
+    %--- MAIN ---
+    VAR MMI,MMJ,MMK                                  leax ,y
+    BEGIN
+      MMI:=1 MMJ:=2 MMK:=3
+    3300: 86 01          LDA         #$01
+    3302: A7 00          STA         +$00,X    --->  0,x
+    3304: 86 02          LDA         #$02
+    3306: A7 01          STA         +$01,X    --->  1,x
+    3308: 86 03          LDA         #$03
+    330A: A7 02          STA         +$02,X    --->  2,x
+    330C: 86 03          LDA         #$03
+      WAIT
+    330E: BD 33 20       JSR         $3320
+      WRITE(1:MMI,CRLF)
+    3311: 86 01          LDA         #$01
+    3313: 97 01          STA         <$01
+    3315: A6 00          LDA         +$00,X    --->  2,x
+    3317: BD B4 32       JSR         $B432
+    331A: BD B4 C1       JSR         $B4C1
+    END
+    331D: 7E B5 15       JMP         $B515    jmp exit 
+    %-- PROCEDURE WAIT --                     
+    WAIT
+    VAR WWJ,WWK
+    3320: BD B3 C6       JSR         $B3C6           stx ,--s
+    BEGIN                                            leax a,x
+      WWJ:=4                                         
+    3327: 86 02          LDA         #$02
+    3329: BD 33 40       JSR         $3340
+      TIME
+    3323: 86 04          LDA         #$04
+    3325: A7 00          STA         +$00,X
+      WRITE(1:MMI,WWJ,CRLF)
+    332C: 86 01          LDA         #$01
+    332E: 97 01          STA         <$01
+    3330: A6 20          LDA         +$00,Y
+    3332: BD B4 32       JSR         $B432
+    3335: A6 00          LDA         +$00,X
+    3337: BD B4 32       JSR         $B432
+    333A: BD B4 C1       JSR         $B4C1
+    END
+    333D: 7E B3 D1       JMP         $B3D1          puls x,pc
+    %-- PROCEDURE TIME --
+    TIME
+    VAR TTK,TTJ
+    3340: BD B3 C6       JSR         $B3C6         stx ,--s
+    BEGIN                                          leax a,x
+      TTK:=5
+    3343: 86 05          LDA         #$05
+    3345: A7 00          STA         +$00,X
+      WRITE(1:MMI,TTK,CRLF)
+    3347: 86 01          LDA         #$01
+    3349: 97 01          STA         <$01
+    334B: A6 20          LDA         +$00,Y
+    334D: BD B4 32       JSR         $B432
+    3350: A6 00          LDA         +$00,X
+    3352: BD B4 32       JSR         $B432
+    3355: BD B4 C1       JSR         $B4C1
+    3358: 7E B3 D1       JMP         $B3D1          puls x,pc
+    END
+
+
+Tue Jan  8 15:58:00 JST 2019
+
+    use no frame pointer mode use S instead of x
+    module call. change y global pointer and stack in inter module call
+    use local variable in for-statement
+    os9 library calls
+    pointer/word extension  ( pointer hoge )
+
+    full syntax test
+

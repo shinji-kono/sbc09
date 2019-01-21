@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <string.h>
 
 #define engine extern
 
@@ -153,7 +154,11 @@ main(int argc,char *argv[])
  int i;
  int setterm = 1;
  timerirq = 2;   // use FIRQ default
+#ifdef USE_MMU
  memsize = 512*1024*4;      // full 2 mbute
+#else
+ memsize = 1024*64;         // 64k
+#endif
  escchar='\x1d'; 
  tracelo=0;tracehi=0xffff;
  for(i=1;i<argc;i++) {
@@ -199,7 +204,9 @@ main(int argc,char *argv[])
    } else if (strcmp(argv[i],"-m")==0) {
      i++;
      memsize=strtol(argv[i],(char**)0,0) & ~0xffff;
+#ifdef USE_MMU
      if (memsize < 512*1024) memsize = 512*1024;
+#endif
    } else usage();
  }   
  #ifdef MSDOS

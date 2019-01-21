@@ -8,7 +8,7 @@ A09 = ../../src/a09 -I $(OS9SRC)/defs/
 
 MOD =  pdisk init os9p1 os9p2 ioman pipe piper rbf scf term pty d0 d1 vrbf v0 clock shell dir mdir sysgo shell
 
-all : ${MOD}
+all : ${MOD} TL1 mc09
 	cd cmds; make
 
 clean : 
@@ -87,3 +87,7 @@ rbf :
 scf :
 	$(A09) ${SRCDIR}/scf.asm -o scf $(LST)
 
+TL1 :
+	ln -s ../../TL1 .
+mc09 :
+	ln -s ../mc09 .

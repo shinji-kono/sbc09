@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
+#include <string.h>
 
 static int sum,charindex;
 unsigned char mem[0x8000];

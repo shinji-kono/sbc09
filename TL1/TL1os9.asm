@@ -84,6 +84,52 @@ size   equ .
 name     fcs   /TL1/
          fcb   edition
 
+
+start    clr   <stdin
+         stx   <parmptr         save parameter pointer
+         stu   <work            save parameter pointer
+         lda   #READ.           read access mode
+         os9   I$Open           open file
+         lbcs  ferr             branch if error
+         sta   <INDN            else save path to file
+         stx   <parmptr         and updated parm pointer
+         leax  readbuff,u       buffer 
+         clr   ,x               buffer empty
+         stx   <adr
+         lbra  comp
+
+copytbl
+         pshs  y,x,u
+         leau  LIBR,y
+         leax  iotbl,pcr
+         leay  iotblend,pcr
+         ldy   #(iotblend-iotbl)
+l1       ldb   #$7e     * JMP
+         stb   ,u+
+         ldd   ,x++
+         addb  1,s
+         adca  ,s
+         std   ,u++
+         cmpx  2,s
+         ble   l1
+         puls  x,y,u
+iotbl
+         fdb   getchar-iotbl            ; 0
+         fdb   putchar-iotbl            ; 3
+         fdb   getline-iotbl            ; 6
+         fdb   putline-iotbl            ; 9
+         fdb   putcr-iotbl              ; $C
+         fdb   getpoll-iotbl            ; $F
+         fdb   xopenin-iotbl            ; $12
+         fdb   xopenout-iotbl           ; $15
+         fdb   xabortin-iotbl           ; $18
+         fdb   xclosein-iotbl           ; $1B
+         fdb   xcloseout-iotbl          ; $1E
+         fdb   delay-iotbl              ; $21
+         fdb   noecho-iotbl             ; $24
+         fdb   setecho-iotbl            ; $27
+         fdb   exit-iotbl               ; $2a
+iotblend
 **
 COMP   CLRA
        STA OUTDN
@@ -1059,7 +1105,7 @@ RTS4   RTS
 TM6    CMPA #$70 
        BNE TM61 
        BSR SUBSC
-       LBSR PUTHS
+       LBSR PUTHSL
        FCB $03BD
        FDB RND
        RTS
@@ -1072,7 +1118,7 @@ TM61   CMPA #$71
        FCB INDN
        LBSR PUTHSL
        FCB $03BD
-       FDB GETCH
+       FDB getchar
        RTS
 * FUNCTION READ 
 TM62   CMPA #$72 
@@ -1335,6 +1381,19 @@ UDERR  PSHS A
 EL     LDX PC
        LBRA C
 
+** OBJECT START
+******
+C      leas OBJECT,u
+VARPTR lda INDN
+       lbsr close
+       clra       os9 stdin
+       sta INDN
+       inca
+       sta OUTDN
+       LDX <PC
+       leay ,x
+OBJMP  JMP OBJECT,u
+
 **********************
 * ADVANCE WORD
 **
@@ -1441,18 +1500,6 @@ WTBLEND
 * SUPORTING ROUTINES
 * & I/0 CONTROL
 **
-** OBJECT START
-******
-C      leas OBJECT,u
-VARPTR lda INDN
-       lbsr close
-       clra       os9 stdin
-       sta INDN
-       inca
-       sta OUTDN
-       LDX <PC
-       leay ,x
-OBJMP  JMP OBJECT,u
 
 **
 * PUSH LB & SET NEW LB
@@ -1624,35 +1671,6 @@ CRLFA  BEQ CL1
        DECA
        BRA CRLFA
 
-
-start    clr   <stdin
-         stx   <parmptr         save parameter pointer
-         stu   <work            save parameter pointer
-         lda   #READ.           read access mode
-         os9   I$Open           open file
-         lbcs  ferr             branch if error
-         sta   <INDN            else save path to file
-         stx   <parmptr         and updated parm pointer
-         leax  readbuff,u       buffer 
-         clr   ,x               buffer empty
-         stx   <adr
-         lbra  comp
-
-copytbl
-         pshs  y,x,u
-         leau  LIBR,y
-         leax  iotbl,pcr
-         leay  iotblend,pcr
-         ldy   #(iotblend-iotbl)
-l1       ldb   #$7e     * JMP
-         stb   ,u+
-         ldd   ,x++
-         addb  1,s
-         adca  ,s
-         std   ,u++
-         cmpx  2,s
-         ble   l1
-         puls  x,y,u
  
 Exit     lbsr        setecho
 *        ldx         <work
@@ -1668,23 +1686,6 @@ Exit     lbsr        setecho
 *       no return
 
 
-iotbl
-         fdb   getchar-iotbl            ; 0
-         fdb   putchar-iotbl            ; 3
-         fdb   getline-iotbl            ; 6
-         fdb   putline-iotbl            ; 9
-         fdb   putcr-iotbl              ; $C
-         fdb   getpoll-iotbl            ; $F
-         fdb   xopenin-iotbl            ; $12
-         fdb   xopenout-iotbl           ; $15
-         fdb   xabortin-iotbl           ; $18
-         fdb   xclosein-iotbl           ; $1B
-         fdb   xcloseout-iotbl          ; $1E
-         fdb   delay-iotbl              ; $21
-         fdb   noecho-iotbl             ; $24
-         fdb   setecho-iotbl            ; $27
-         fdb   exit-iotbl               ; $2a
-iotblend
 
 err     ldb    #1
 L0049
@@ -1826,6 +1827,7 @@ delay   PSHS        D,X  * address **$21**
         TFR         D,X
         OS9         F$Sleep
         PULS        D,X,PC
+LIBEND
 
 
          emod

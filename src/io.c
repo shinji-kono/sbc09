@@ -29,6 +29,7 @@ General Public License version 2, see LICENSE for more details.
 #include<ctype.h>
 #include<signal.h>
 #include<sys/time.h>
+#include<strings.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -123,6 +124,17 @@ extern Byte * mem0(Byte *iphymem, Word adr, Byte *immu) ;
 #define pmem(a)  (&mem[a])
 #endif
 
+#if _POSIX_SOURCE>=200809L
+
+void usleep(long usec)
+{
+    struct timespec rdtp;
+    bzero(&rdtp,sizeof(struct timespec));
+    rdtp.tv_nsec = usec*1000;
+    nanosleep(&rdtp,0);
+}
+
+#endif
 
 extern int bpskip ;
 extern int stkskip ;
@@ -400,7 +412,8 @@ void set_term(char c) {
         newterm.c_cc[VMIN] = 1;
         newterm.c_cc[VINTR] = escchar;
         tcsetattr(0, TCSAFLUSH, &newterm);
-        fcntl(0, F_SETFL, tflags | O_NDELAY); /* Make input from stdin non-blocking */
+        // fcntl(0, F_SETFL, tflags | O_NDELAY); /* Make input from stdin non-blocking */
+        fcntl(0, F_SETFL, tflags | O_NONBLOCK); /* Make input from stdin non-blocking */
         signal(SIGALRM, timehandler);
         timercontrol.it_interval.tv_sec = 0;
         timercontrol.it_interval.tv_usec = timer_usec;

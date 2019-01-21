@@ -17,14 +17,14 @@
 #include <time.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <sys/types.h>
 
 static int vdiskdebug = 0;  //   bit 1 trace, bit 2 filename
 
-
-Byte pmmu[8];  // process dat mmu
-
 extern char *prog ;   // for disass
 #ifdef USE_MMU
+Byte pmmu[8];  // process dat mmu
+
 extern Byte * mem0(Byte *iphymem, Word adr, Byte *immu) ;
 //  smem physical address using system mmu
 //  pmem physical address using caller's mmu
@@ -173,7 +173,7 @@ if(vdiskdebug&0x2) { printf("addcur \""); putOs9str(name,0); printf("\" cur \"")
     int i = 0;
     for(;base[i];i++) path[i] = base[i];
     path[i++] = '/';
-    for(int j=0;i<ps;j++,i++) path[i] = name[j];
+    for(int j=0;i<ps-1;j++,i++) path[i] = name[j];
     path[i] = 0;
     if (i>ps)
         printf("overrun i=%d ps=%d\n",i,ps); // err(__LINE__);
@@ -205,7 +205,9 @@ if(vdiskdebug&2) { printf("checkf \""); putOs9str(name,0); printf("\"\n"); }
         while(*p==' ') p++;
     }
     char *name1 = addCurdir(name,pd,curdir);
-    if (name1!=name && path!=name) free(name);
+    if (name1!=name && path!=name) {
+       free(name);
+    }
     if (name1==0) return 0;
     pd->name = name1;
 if(vdiskdebug&2) {
@@ -256,6 +258,20 @@ os9mode(Byte m) {
     return mode;
 }
 
+#ifdef NOFMEMOPEN
+
+FILE *fmemopen(char *buf,long sz, const char *mode) {
+    static char fname[] = "/tmp/myfileXXXXXX";
+    int fd;
+    fd = mkstemp(fname);     /* Create and open temp file */
+    write(fd, buf, sz);      /* Write something to file */
+    lseek(fd, 0L, SEEK_SET);
+    FILE *fp = fdopen(fd,mode);
+    unlink(fname);
+    return fp;
+}
+
+#endif
 
 /*
  *   os9 file descriptor
@@ -327,9 +343,10 @@ os9opendir(PathDesc *pd) {
         int j = 0;
         for(j = 0; j < DIR_NM ; j++) {
             if (j< dp->d_namlen)  {
-               pd->dirfp[i+j] = dp->d_name[j]&0x7f;
-               if (j== dp->d_namlen-1)  
+               pd->dirfp[i+j] = dp->d_name[j]&0x7f;  // this is wrong but os9 does not allow 8th bit
+               if (j== dp->d_namlen-1 || dp->d_name[j+1]==0) {
                   pd->dirfp[i+j] |= 0x80;    // os9 EOL
+               }
             } else
                pd->dirfp[i+j] = 0;
         }
@@ -340,15 +357,15 @@ os9opendir(PathDesc *pd) {
         if (i>pd->sz) 
             return 0;
     }
-    pd->fp = fmemopen(pd->dirfp,pd->sz,"r");
+    pd->fp = fmemopen(pd->dirfp,pd->sz+1,"r");
     return 0;
 }
 
 static void 
-os9setdate(Byte *d,struct timespec * unixtime) {
+os9setdate(Byte *d,time_t * unixtime) {
     //   yymmddhhss
     struct tm r;
-    localtime_r(&unixtime->tv_sec,&r);
+    localtime_r(unixtime,&r);
     d[0] = r.tm_year-2048;
     d[1] = r.tm_mon + 1;
     d[2] = r.tm_mday;
@@ -366,24 +383,24 @@ os9setdate(Byte *d,struct timespec * unixtime) {
 static int 
 filedescriptor(Byte *buf, int len, Byte *name,int curdir) {
     int err = 0x255;
-    PathDesc pd;  
+    PathDesc pd;  pd.name = 0;
     if (len<13) return -1;
-    checkFileName((char*)name,&pd,curdir);
+    if (checkFileName((char*)name,&pd,curdir)==0) goto err1;
     struct stat st;
     if (stat(pd.name,&st)!=0) goto err1;
     os9setmode(buf+FD_ATT,st.st_mode);
     buf[FD_OWN]=(st.st_uid&0xff00)>>8;
     buf[FD_OWN+1]=st.st_uid&0xff;
-    os9setdate(buf+ FD_DAT,&st.st_mtimespec);
+    os9setdate(buf+ FD_DAT,&st.st_mtime);
     buf[FD_LNK]=st.st_nlink&0xff;
     buf[FD_SIZ+0]=(st.st_size&0xff000000)>>24;
     buf[FD_SIZ+1]=(st.st_size&0xff0000)>>16;
     buf[FD_SIZ+2]=(st.st_size&0xff00)>>8;
     buf[FD_SIZ+3]=st.st_size&0xff;
-    os9setdate(buf+FD_Creat,&st.st_ctimespec);
+    os9setdate(buf+FD_Creat,&st.st_ctime);
     err = 0;
 err1:
-    free(pd.name);
+    free(pd.name); 
     return err;
 }
 
@@ -520,7 +537,7 @@ do_vdisk(Byte cmd) {
         case 0xd2:
             mode = *areg;
             attr = *breg;
-            pd->fp = 0;
+            pd->fp = 0; pd->name = 0;
             path = (char*)pmem(xreg);
             next = checkFileName(path,pd,curdir);
             *breg = 0xff;
@@ -908,7 +925,7 @@ vdisklog(Word u,PathDesc *pd, Word pdptr, int curdir, FILE *fp) {
     prog = (char*)(pmem(pcreg) - pcreg);
     if (*pmem(pcreg)==0 && *pmem(pcreg+1)==0) {
         // may be we are called from system state
-        // of coursel, this may wrong. but in system state, <$50 process has wrong DAT for pc
+        // of course, this may wrong. but in system state, <$50 process has wrong DAT for pc
         // and we can't know wether we are called from system or user
         prog = (char*)(smem(pcreg) - pcreg);
     }

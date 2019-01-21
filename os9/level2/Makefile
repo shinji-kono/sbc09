@@ -7,7 +7,7 @@ A09 = ../../src/a09 -I $(OS9SRC)/defs/
 
 ALL = ioman pdisk init os9p1 os9p2 os9p3_perr os9p4_regdump pipe pipeman pipeman_named piper rbf scf term pty d0 d1 clock vector boot shell dir mdir sysgo v0 vrbf
 
-all : $(ALL)
+all : $(ALL) TL1 mc09
 	cd cmds ; make
 
 clean : 
@@ -92,4 +92,9 @@ vrbf : vrbf.asm
 
 scf :
 	$(A09) $(OS9SRC)/level1/modules/scf.asm  -o $@ $(LST)
+
+TL1 :
+	ln -s ../../TL1 .
+mc09 :
+	ln -s ../mc09 .
 
