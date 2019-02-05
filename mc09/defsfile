@@ -12,7 +12,7 @@ NOS9MAJ   equ OS9Major
 NOS9MIN   equ OS9Minor
 
 
-         use   ../nitros9-code/defs/os9.d
-         use   ../nitros9-code/defs/scf.d
-         use   ../nitros9-code/defs/rbf.d
+         use   ../os9/nitros9-code/defs/os9.d
+         use   ../os9/nitros9-code/defs/scf.d
+         use   ../os9/nitros9-code/defs/rbf.d
 

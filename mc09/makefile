@@ -3,12 +3,12 @@ MCLIBS=alloc.txt c.txt fileio.txt fileio2.txt mclib.c scanf.txt\
 
 MCUTILS=uf.c
 
-DESTDIR=../level2
+DESTDIR=../os9/level2
 
 # CFLAGS = -m32 -O0 -g -Wno-return-type -Wno-implicit-int -Wno-implicit-function-declaration -Wno-parentheses
 CFLAGS = -O0 -g -Wno-return-type -Wno-implicit-int -Wno-implicit-function-declaration -Wno-parentheses -Wno-format
 
-AS09 = ../../src/a09
+AS09 = ../src/a09
 
 all:	mc2 testcp
 
