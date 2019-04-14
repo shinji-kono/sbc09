@@ -1,470 +1,548 @@
 <html xmlns='http://www.w3.org/1999/xhtml'>
 <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
 <head>
-<title>TL/1 言語仕様</title>
+<title>TL/1 language specification</title>
 <link rel='stylesheet' type='text/css' href='tl1.css' />
 </head>
 <body>
-<h1>TL/1 言語仕様</h1>
-<h2>概要</h2>
-<p>この文章はプログラミング言語 TL/1 の言語仕様のまとめです。 雑誌やウェブ上にある説明などを元にして私の解釈や曖昧箇所の指摘を加えて仕様の体裁に再構成したものです。</p>
-<p>説明のために元資料にない用語を使う場合もあります。</p>
-<p>この文章中で「未定義」としている箇所は、元資料から判断がつかないことを陽に示したものです。</p>
-<p><a href="tl1-syntax-diagram.xhtml">構文図</a>も用意していますが、識別子の解釈に独特な部分があるので文章の方を先に読んでから構文図を参考にした方がよいでしょう。</p>
+<h1>TL/1 language specification</h1>
+<h2>Introduction</h2>
+<p>TL/1 is a pascal like one pass compiler for 8bit cpu, which is implented by Hiroshi Ohnishi in 1980.
+It has very fast compilation speed, but only supports 8bit variable and array. 16bit addressed memory can be accessed by MEM variable.
 
-<h2>字句</h2>
+<h2> example TL/1 source </h2>
 
-<h3>コメント</h3>
-<p>パーセント記号 (%) から次の改行までは無視され、プログラム的には空白文字と同等の意味しか持ちません。 プログラムの説明などを記述するのに使ってください。</p>
+<a href="test/t1.tl1"> t1.tl1 </a>
+<pre>
+% TEST PROGRAM **
+PROC WAIT,TIME
+%--- MAIN ---
+VAR I
+BEGIN
+  WRITE(1:"Do ")
+  FOR I:=1 TO 10 DO [
+    WRITE(1:I,CRLF)
+    TIME
+    ]
+  WAIT
+END
+%-- PROCEDURE WAIT --
+WAIT
+VAR I,J,K
+BEGIN
+  FOR I:=0 TO 1 DO [
+    FOR J:=0 TO 255 DO [
+      FOR K:=0 TO 255 DO []]]
+END
+%-- PROCEDURE TIME --
+TIME
+VAR I,J
+BEGIN
+  FOR I:=0 TO 10 DO [
+    FOR J:=0 TO 150 DO []]
+END
+</pre>
 
-<h3 id='identifier'>識別子</h3>
-<p>英文字で始まり、後続する英数字 0 個以上で構成されます。 識別子を構成しない文字 (空白や記号) の直前までを 1 個の語として解釈します。 大文字と小文字は区別しません。 識別子の長さに上限はありません。</p>
-<p>予約語、手続き名、関数名、大域単変数名、大域配列名、小域単変数名、小域配列名が同じ綴りを持つ可能性があります。 宣言時に既存の名前と重複しないかチェックされません。 宣言以外の箇所では処理系は以下の順序で名前の検索を試み、最初に発見された属性の識別子として解釈します。</p>
+<a href="test/t2.tl1"> t2.tl1 </a>
+
+<a href="test/t3.tl1"> t3.tl1 </a>
+
+<p>This document is a summary of the language specification of the programming language TL/1. Based on the explanation in magazines and the web etc., it is what I reorganized into the format of the specification with the addition of my interpretation and the indication of ambiguous parts.</p>
+<p>We may use terms that are not in the original document for the purpose of explanation.</p>
+<p>The places in this text that are referred to as "undefined" are explicit indications that the original source material can not be judged.</p>
+<p>Although <a href="tl1-syntax-diagram.xhtml">syntax diagrams </a> are prepared, it is better to read the sentences first and then refer to the syntax diagrams because there is a unique part in the interpretation of identifiers.
+</p>
+
+<h2>Token</h2>
+
+<h3>Comment</h3>
+<p>The percent sign (%) to the next newline is ignored, and it is treated as whitespace. Use it to describe the program description etc.</p>
+
+<h3 id='identifier'>Identifier</h3>
+<p>It consists of zero or more alphanumeric characters, beginning with an alphabetic character. The word continues up to just before a character (space or symbol) that does not form an identifier. Uppercase and lowercase letters are not distinguished.
+  There is no upper limit on the identifier length.</p>
+<p>Reserved words, procedure names, function names, global single variable names, global array names, small area single variables, and small area array names may have the same spelling. It is not checked at the time of declaration if it is identical to the existing name. Except where in the declaration, the implementation tries the name search in the following order and interprets it as the identifier of the first attribute found.</p>
 <ol>
-<li>小域配列名</li>
-<li>小域単変数名</li>
-<li>大域配列名</li>
-<li>大域単変数名</li>
-<li>関数名</li>
-<li>手続き名</li>
-<li>予約語</li>
+<li> Local array name </li>
+<li> Local single variable name </li>
+<li> Global array name </li>
+<li> Global single variable name </li>
+<li> function name </li>
+<li> Procedure name </li>
+<li> reserved words </li>
 </ol>
 
-<h3 id='number'>数値</h3>
-<p>4 種類の表現方法があります。</p>
-<p>TL/1 で直接的に扱える数値はバイトサイズであり、ゆえにプログラム中で現れる数値表現は常に 0〜255 の範囲内です。</p>
-<p>構文中で真偽値を要求している箇所においては 255 を真、それ以外の値は偽と解釈します。 真偽値を返す関数は真として 255 を、偽として 0 を返します。</p>
+<h3 id='number'>Number</h3>
+<p> There are 4 types of expressions. </p>
+<p> The numbers that can be handled directly with TL/1 are byte sizes, so the numeric representations that appear in a program are always in the range of 0-255. </p>
+<p> In places where a boolean value is required in the syntax, 255 is interpreted as true, and other values are interpreted as false. A function that returns a boolean value returns 255 as true and 0 as false. </p>
 
-<h4>十進定数</h4>
-<p>0〜9 の文字を 1 つ以上並べて 0〜255 の範囲を数を表現できます。</p>
-<p>頭に余計な 0 を付けた場合 (例えば 02 のような) の挙動は未定義です。</p>
+<h4> decimal constant </h4>
+<p> One or more of the characters 0-9 can be numbers in the range 0-255. </p>
+<p> Behavior is not defined if you add an extra 0 at the beginning (such as 02). </p>
 
-<h4>十六進定数</h4>
-<p>記号 $ に 0〜9 または a〜f で十六進表現で 0〜255 を表します。a〜f は大文字 (A〜F) を使っても同じ意味です。</p>
-<p>記号 $ の後に空白文字を入れてはいけません。</p>
-<p>十六進で二桁にするために余計な 0 を頭に付けること (例えば $0A のような) は許されますが、それよりも多くの 0 を頭に付けた場合 (例えば $002) の挙動は未定義です。</p>
+<h4> Hexadecimal constant </h4>
+<p> Symbols beginning '$' which follows 0 to 9 or a to f represent 0 to 255 in hexadecimal notation. The letters a to f have the same meaning even if they use uppercase letters (A to F). </p>
+<p> Do not put a space character after the symbol $. </p>
+<p> It is permissible to add an extra 0 (for example $0A) to make two digits in hexadecimal, but if you add more 0 (for example $002) The behavior of) is undefined. </p>
 
-<h4>文字リテラル定数</h4>
-<p>クオートで挟まれた一文字で表現します。 その一文字のアスキーコードと同じ数値が書かれたものと見做されます。</p>
-<pre class='example'>'A' % 65 と書いたのと同じ意味</pre>
+<h4> Character literal constant </h4>
+<p> Expressed by a single character between quotes. It is considered that the same numerical value as the one-letter ASCII code is written. </p>
+<pre class = 'example'> 'A' has the same meaning as 65.</pre>
 
-<h4>論理定数</h4>
-<p>識別子 <span class='reserved'>TRUE</span> もしくは <span class='reserved'>FALSE</span> で表します。 <span class='reserved'>TRUE</span> は $FF 、 <span class='reserved'>FALSE</span> は 0 と同じです。</p>
+<h4> Logical constant </h4>
+<p> represented by <span class = 'reserved'> TRUE </span> or <span class = 'reserved'> FALSE </span>. <span class = 'reserved'> TRUE </span> is equivalent to $FF and <span class = 'reserved'> FALSE </span> is equal to 0. </p>
 
-<h3>記号</h3>
-<p>その他、演算子や構文には記号を用いますが、後述する構文の説明の中で取り上げます。</p>
+<h3> symbol </h3>
+<p> Others, symbols are used for operators and syntax, but they will be covered in the syntax description below. </p>
 
-<h3>空白文字</h3>
-<p>語の間に挿入することが出来ます。 語の区切りとしては 1 個あれば充分ですが、何個連続しても意味は変わりませんので外観を整えるために活用して下さい。 空白文字と解釈する文字は以下の通りです。</p>
+<h3> Space character </h3>
+<p> It can be inserted between words. One word is sufficient for word separation, but the meaning does not change even if it continues several times. Please use it to adjust the appearance. The following characters are interpreted as whitespace characters. </p>
 <ul>
-<li>文字コード $1F 以下の文字 (制御文字)</li>
-<li>空白</li>
-<li>ピリオド (.)</li>
-<li>セミコロン (;)</li>
+<li> Character code less than $1F (control character) </li>
+<li> Blank </li>
+<li> Period (.) </li>
+<li> Semicolon (;) </li>
 </ul>
-<p>使い方に習慣的な意味がある場合もあり、それについては後述します。</p>
+<p> There are also habitual meanings to how to use, which will be described later. </p>
 
-
-<h2>プログラムの構成</h2>
-<p>プログラムは以下の順序で構成されます。</p>
+<h2> Program configuration </h2>
+<p> Programs are organized in the following order. </p>
 
 <ol>
-  <li>手続き名宣言</li>
-  <li>関数名宣言</li>
-  <li>大域単変数名宣言</li>
-  <li>大域配列名・配列の大きさ宣言</li>
-  <li>主プログラムの定義</li>
-  <li>手続き、または関数の定義群</li>
+   <li> Procedure name declaration </li>
+   <li> Function name declaration </li>
+   <li> Global single variable name declaration </li>
+   <li> Global array name / array size declaration </li>
+   <li> Main program definition </li>
+   <li> Procedure or function definition group </li>
 </ol>
 
-<p>それぞれの内容は以下のようになります。</p>
+<p> The contents of each are as follows. </p>
 
-<h3>手続き名宣言</h3>
-<p>プログラム中で使用する手続き名を予約語 <span class='reserved'>PROC</span> に続けて書きます。 手続き名が複数の場合はカンマで区切ります。</p>
-<pre class='form'>
-<span class='reserved'>PROC</span> <span class='metavar'>手続き1</span> , <span class='metavar'>手続き2</span> , <span class='metavar'>手続き3</span> ...
+<h3> Procedure Name Declaration </h3>
+<p> Comma separated list of the procedure names to be used in the program following the reserved word <span class = 'reserved'> PROC </span>. 
+</p>
+<pre class = 'form'>
+<span class = 'reserved'> PROC </span> <span class = 'metavar'> procedure 1 </span>, <span class = 'metavar'> procedure 2 </span>, <span class = 'metavar' > Procedure 3 </span> ...
 </pre>
-<p>手続きが 0 個の場合は宣言を省略します。</p>
+<p> The declaration can be ommited if there are zero procedures. </p>
 
-<h3>関数名宣言</h3>
-<p>プログラム中で使用する関数名を予約語 <span class='reserved'>FUNC</span> に続けて書きます。 関数名が複数の場合はカンマで区切ります。 </p>
-<pre class='form'>
-<span class='reserved'>FUNC</span> <span class='metavar'>関数1</span> , <span class='metavar'>関数2</span> , <span class='metavar'>関数3</span> ...
+<h3> Function name declaration </h3>
+<p> Comma separated list of the function name to be used in the program following the reserved word <span class = 'reserved'> FUNC </span>. 
+</p>
+<pre class = 'form'>
+<span class = 'reserved'> FUNC </span> <span class = 'metavar'> function 1 </span>, <span class = 'metavar'> function 2 </span>, <span class = 'metavar' > Function 3 </span> ...
 </pre>
-<p>関数を 0 個の場合は宣言を省略します。</p>
+<p>If the number of functions is zero, the declaration is omitted. </p>
 
-<h3>大域単変数名宣言</h3>
-<p>プログラム全体で使用する単変数名を予約語 <span class='reserved'>VAR</span> に続けて書きます。 大域単変数名が複数の場合はカンマで区切ります。</p>
-<pre class='form'>
-<span class='reserved'>VAR</span> <span class='metavar'>単変数1</span> , <span class='metavar'>単変数2</span> , <span class='metavar'>単変数3</span> ...
+<h3> Global scalar variable name declaration </h3>
+<p> Comma separated list of scalar variable names used throughout the program following the reserved word <span class = 'reserved'> VAR </span>. 
+</p>
+<pre class = 'form'>
+<span class = 'reserved'> VAR </span> <span class = 'metavar'> single variable 1 </span>, <span class = 'metavar'> single variable 2 </span>, <span class = ' metavar '> single variable 3 </span> ...
 </pre>
-<p>大域単変数が 0 個の場合は宣言を省略します。</p>
-<p>後述の大域配列と合計して 256 バイト以内である必要があります。 更に<a href='#subprogram'>副プログラム</a>を呼出す場合は 2 バイトの余地が必要 (大域単変数と大域配列を合計した大きさが 254 バイト以下になる必要がある) です。 </p>
+<p> The declaration can be ommited if there are zero global scalar variables. </p>
+<p> The variables must be within 256 bytes in total with the global array described below. 
+Furthermore, if you call <a href='#subprogram'> subprogram </a>, you need room for 2 bytes 
+(the sum of global single variable and global array needs to be less than 254 bytes) . </p>
 
-<h3>大域配列名・配列の大きさ宣言</h3>
-<p>プログラム全体で使用する配列名とその大きさを予約語 <span class='reserved'>ARRAY</span> に続けて書きます。 配列の大きさは配列名の後に角括弧で囲んだ数値で表します。 配列名が複数の場合はカンマで区切ります。</p>
-<pre class='form'>
+<h3> Global array name / array size declaration </h3>
+<p> Camma separated list of an array name and its size to be used throughout the program following the reserved word <span class = 'reserved'> ARRAY </span>. 
+The size of the array is indicated by the numerical value enclosed by square brackets after the array name.  </p>
+<pre class = 'form'>
 
-<span class='reserved'>ARRAY</span> <span class='metavar'>配列1</span> [ <span class='metavar'>配列1の大きさ</span> ] ,
-      <span class='metavar'>配列2</span> [ <span class='metavar'>配列2の大きさ</span> ] ,
-      <span class='metavar'>配列3</span> [ <span class='metavar'>配列3の大きさ</span> ] ...
+<span class='reserved'>ARRAY</span> <span class='metavar'>array1</span> [ <span class='metavar'>size of array1</span> ] ,
+      <span class='metavar'>array2</span> [ <span class='metavar'>size of array2</span> ] ,
+      <span class='metavar'>array3</span> [ <span class='metavar'>size of array3</span> ] ...
 </pre>
-<p>配列の大きさは配列の添字の最大値です。 例えば A[10] と宣言した配列に対しては 0〜10 の添字で安全に参照できることを意味します。 C などのように配列の要素数ではないことに注意してください。</p>
-<h3>主プログラムの定義</h3>
-<p>予約語 <span class='reserved'>BEGIN</span> と <span class='reserved'>END</span> で狭んだ 0 個以上の<a href='#statement'>実行文</a>から成ります。</p>
-<h3 id='subprogram'>副プログラムの定義</h3>
-<p>副プログラムとは手続きか関数です。 以下のような順序で構成されます。</p>
+
+<p> The size of the array is the maximum value of array subscripts. For example, for arrays declared as A[10], 
+it means that they can be safely referenced with an index of 0-10. It is not the number of elements of the array such as C.
+</p>
+<h3> Main program definition </h3>
+<p> 0 or more <a href='#statement'> statements </a> between <span class = 'reserved'> BEGIN </span> and <span class = 'reserved'> END </span> . </p>
+
+<h3 id = 'subprogram'> Subprogram definitions </h3>
+<p> A subprogram is a procedure or a function. It is organized in the following order: </p>
 <ol>
-<li>副プログラム名</li>
-<li>仮引数リスト</li>
-<li>小域単変数名宣言</li>
-<li>小域配列名・配列の大きさ宣言</li>
-<li>予約語 <span class='reserved'>BEGIN</span></li>
-<li>0 個以上の実行文</li>
-<li>予約語 <span class='reserved'>END</span></li>
+<li> Sub-program name </li>
+<li> formal argument list </li>
+<li> Sub-area single variable name declaration </li>
+<li> Small-area array name / array size declaration </li>
+<li> Reserved words <span class = 'reserved'> BEGIN </span> </li>
+<li> 0 or more statements </li>
+<li> Reserved words <span class = 'reserved'> END </span> </li>
 </ol>
-<p>これが副プログラムの個数分だけ繰返されます。</p>
-<p>副プログラムの定義は宣言の順序と一致しなくてもかまいません。</p>
-<h4>副プログラム名</h4>
-<p>プログラムの最初の手続き名宣言か関数名宣言で宣言した名前です。</p>
-<h4>仮引数リスト</h4>
-<p>丸括弧で囲まれた複数の識別子です。 識別子が複数の場合はカンマで区切ります。</p>
-<pre class='form'>
-( <span class='metavar'>仮引数1</span> , <span class='metavar'>仮引数2</span> , <span class='metavar'>仮引数3</span> ...)
-</pre>
-<p>仮引数はいわゆる値渡しのみです。 呼出し時の実引数で初期化される点が異なるだけの小域単変数です。 (暗黙の小域単変数宣言)</p>
-<p>仮引数が 0 個の場合は丸括弧ごと省略することも出来ます。</p>
-<h4>小域単変数名宣言</h4>
-<p>当該の副プログラム内だけで参照可能な単変数を宣言します。 形式は大域単変数と同じです。</p>
-<p>小域単変数が 0 個の場合は宣言を省略します。</p>
-<p>大域単変数・大域配列と同様に、小域単変数と小域配列を合せた大きさが 256 バイト以下である必要があります。</p>
-<h4>小域配列名宣言</h4>
-<p>当該の副プログラム内だけで参照可能な配列を宣言します。 形式は大域配列と同じです。</p>
 
-<h2 id='statement'>実行文</h2>
-<h3>複文</h3>
-<p>文括弧で 0 個以上の実行文を囲うことで 1 個の実行文にまとめることが出来ます。</p
->
-<pre class='form'><span class='reserved'>BEGIN</span> <span class='metavar'>実行文リスト</span> <span class='reserved'>END</span></pre>
-<pre class='form'>{ <span class='metavar'>実行文リスト</span> }</pre>
-<pre class='form'>[ <span class='metavar'>実行文リスト</span> ]</pre>
-<pre class='form'>( <span class='metavar'>実行文リスト</span> )</pre>
-<p>まとめられた文は複文と呼ばれ、あたかもひとつの実行文であるかのように振舞いますので、以降の説明で実行文が現れることが出来る箇所のどこにでも現れることが出来ます。 囲まれた実行文が 0 個の複文は空文と呼びます。</p>
-<p>どの括弧記号を使っても同じ意味ですが、必ず対応する閉じ括弧で閉じる必要があります。 例えば「{」で始めて「]」で閉じるような使い方は出来ません。</p>
-<p>複文中のそれぞれの実行文を区切るために、空白文字として無視されるセミコロン (;) を書く習慣があります。</p>
-<p>主プログラム、副プログラムの本文も複文の一種ではありますが、上記で示した通り <span class='reserved'>BEGIN</span> と <span class='reserved'>END</span> で挟む必要があり、他の括弧は使えません。</p>
-<h3>STOP</h3>
-<p>実行を停止してモニタに飛びます。</p>
-<p>主プログラムの最後には自動的に挿入されるので書かなくてもよいですが、主プログラム/副プログラムの任意の場所に書けます。</p>
-<h3>RETURN</h3>
-<p>手続き、または関数から復帰します。</p>
+<p> This is repeated by the number of subprograms. </p>
+<p> The definition of a subprogram does not have to match the order of declaration. </p>
+
+<h4> Sub program name </h4>
+
+<p> The name must be delcared in the procedure or the function name declaration part of the program. </p>
+
+<h4> Formal argument list </h4>
+<p> Multiple identifiers enclosed in parentheses. Separate multiple identifiers with commas. </p>
+<pre class = 'form'>
+(<span class = 'metavar'> argument 1 </span>, <span class = 'metavar'> argument 2 </span>, <span class = 'metavar'> argument 3 </span> .. .)
+</pre>
+<p> Arguments are passed by values. These are local sacalar variables which are initialized with the actual argument at the time of invocation. 
+(Implicit local scalar variable declaration) </p>
+<p> If there are no arguments, you can omit the parentheses. </p>
+
+<h4> Local scalar variable name declaration </h4>
+<p> Declare single variables that can be referenced only in the relevant subprogram. The format is the same as a global single variable. </p>
+<p> Omit the declaration if there are zero subregion single variables. </p>
+<p> Similar to global single variables and global arrays, the combined size of the subregion single variables and the subregion array must be 256 bytes or less. </p>
+
+<h4> Local array name declaration </h4>
+<p> Declare an array that can be referenced only in the subprogram. The format is the same as for a global array. </p>
+
+
+<h2 id='statement'>statements</h2>
+
+<h3> compound statements </h3>
+<p> You can combine 0 or more statements with one or more statements into one statement. </p >
+<pre class = 'form'> <span class = 'reserved'> BEGIN </span> <span class = 'metavar'> statement list </span> <span class = 'reserved'> END </span> </pre>
+<pre class = 'form'> {<span class = 'metavar'> statement list </span>} </pre>
+<pre class = 'form'> [<span class = 'metavar'> statement list </span>] </pre>
+<pre class = 'form'> (<span class = 'metavar'> statement list </span>) </pre>
+<p> Compound sentences behave as if they were one statement, 
+so they can appear anywhere the statement can appear in the following explanation. 
+A compound statement with 0 enclosed execution statements is called a blank statement. </p>
+<p> Any parenthesis means the same thing, but it must be closed with the corresponding closing parenthesis. 
+For example, it is not possible to start with "{" and close it with "]". </p>
+<p> It is customary to write a semicolon (;) which is ignored as a space character to separate each statement in a compound statement. </p>
+<p> The main program and sub program text is also a kind of compound sentence, but as shown above, there must be in
+<span class = 'reserved'> BEGIN </span> and <span class = 'reserved'> END </span>. 
+You can not use other parentheses. </p>
+
+<h3> STOP </h3>
+<p> Stop the execution and jump to the monitor. </p>
+<p> It is inserted automatically at the end of the main program, so it does not have to be written, but it can be written anywhere in the main program / subprogram. </p>
+<h3> RETURN </h3>
+<p> Returns from a procedure or function. </p>
 <pre class='form'>
 <span class='reserved'>RETURN</span>
 </pre>
 <pre class='form'>
-<span class='reserved'>RETURN</span> <span class='metavar'>式</span>
+<span class='reserved'>RETURN</span> <span class='metavar'>expression</span>
 </pre>
-<p>手続きから復帰する場合には式を持たない書式で、関数から復帰する場合は 1 個の式が続く書式で書きます。</p>
-<p>手続きの最後には自動的に挿入されるので書かなくてもよいですが、手続き中のどこででも使用することが出来ます。 (一部の処理系では <span class='reserved'>FOR</span> ループ内で使ってはいけません。)</p>
-<p>関数の定義内では必ず 1 つ以上使う必要があります。 (コンパイル時にチェックされないことに注意してください。 また、 <span class='reserved'>FOR</span> ループ内で使ってはいけません。)</p>
-<p>関数内で <span class='reserved'>RETURN</span> 文を通過せずに終端 (関数の定義の終りを表す <span class='reserved'>END</span>) に行き当たった場合の挙動は未定義です。</p>
 
-<h3>FOR</h3>
-<p>単変数の値を変化させながら繰返しする処理を表します。</p>
-<pre class='form'>
-<span class='reserved'>FOR</span> <span class='metavar'>単変数</span> := <span class='metavar'>式</span> <span class='reserved'>TO</span> <span class='metavar'>式</span> <span class='reserved'>DO</span> <span class='metavar'>実行文</span>
-</pre>
-<pre class='form'>
-<span class='reserved'>FOR</span> <span class='metavar'>単変数</span> := <span class='metavar'>式1</span> <span class='reserved'>DOWNTO</span> <span class='metavar'>式2</span> <span class='reserved'>DO</span> <span class='metavar'>実行文</span></pre>
-<p>カウント用の <span class='metavar'>単変数</span> に式の値を代入し、 <span class='metavar'>単変数</span> を 1 ずつ増加または減少させながら実行文を繰返します。</p>
-<p><span class='metavar'>単変数</span> の増分は、 <span class='reserved'>TO</span> を用いたとき +1 、 <span class='reserved'>DOWNTO</span> を用いたときは -1 です。 (一部の処理系では <span class='reserved'>DOWNTO</span> を使えません。)</p>
+<p> When returning from a procedure, write in a format without an expression, and when returning from a function, write in a format followed by one expression. </p>
+<p> It is inserted automatically at the end of the procedure, so it does not have to be written, but it can be used anywhere in the procedure. (Do not use it in <span class = 'reserved'> FOR </span> loop in some implementations). </P>
+<p> At least one must be used in the function definition. (Note that it is not checked at compile time. Also, 
+should not be used in a <span class = 'reserved'> FOR </span> loop) </p>
+The behavior when hit is undefined when it reached
+to the end (<span class = 'reserved'> END </span>, which represents the end of the function definition) 
+without passing <span class = 'reserved'> RETURN </span> statement in a function </p>
 
-<h3>REPEAT</h3>
-<pre class='form'><span class='reserved'>REPEAT</span> <span class='metavar'>文リスト</span> <span class='reserved'>UNTIL</span> <span class='metavar'>式</span></pre>
-<p><span class='metavar'>式</span> の値が真値になるまで <span class='metavar'>文リスト</span> を繰返し実行します。 <span class='metavar'>文リスト</span> は 0 個以上の実行文を並べたものです。</p>
+<h3> FOR </h3>
+<p> Repeats statements while changing the value of a single variable. </p>
+<pre class = 'form'>
+<span class = 'reserved'> FOR </span> <span class = 'metavar'> variable </span>: = <span class = 'metavar'> expression </span> <span class = 'reserved'> TO </span> <span class = 'metavar'> expression </span> <span class = 'reserved'> DO </span> <span class = 'metavar'> statements </span>
+</pre>
+<pre class = 'form'>
+<span class = 'reserved'> FOR </span> <span class = 'metavar'> variable </span>: = <span class = 'metavar'> expression 1 </span> <span class = 'reserved' > DOWNTO </span> <span class = 'metavar'> expression 2 </span> <span class = 'reserved'> DO </span> <span class = 'metavar'> statements </span> </pre> >
+Assign the value of the expression to <span class = 'metavar'> the scalar variable </span> for <p> counting, and increment or decrease <span class = 'metavar'> scalar variable </span> by 1 at a time,  repeat executing the statements. </p>
+The increment of <p> <span class = 'metavar'> variable </span> is +1 when <span class = 'reserved'> TO </span> is used, <span class = 'reserved'> DOWNTO When using </span> it is -1. (<span class='reserved'>  DOWNTO </span>can not use <span class = 'reserved'> DOWNTO </span> on some implementations.) </P>
 
-<h3>WHILE</h3>
-<pre class='form'><span class='reserved'>WHILE</span> <span class='metavar'>式</span> <span class='reserved'>DO</span> <span class='metavar'>実行文</span></pre>
-<p><span class='metavar'>式</span> の値が偽ならば <span class='metavar'>実行文</span> を実行せずに次の処理へ移ります。</p>
-<p>式の値が真の場合は <span class='metavar'>実行文</span> を実行して再び <span class='metavar'>式</span> の評価に戻ります。</p>
+<h3> REPEAT </h3>
+<pre class = 'form'> <span class = 'reserved'> REPEAT </span> <span class = 'metavar'> statement list </span> <span class = 'reserved'> UNTIL </span> <span class = 'metavar'> expression </span> </pre>
+<span class = 'metavar'> statement list </span> is repeated until the value of <p> <span class = 'metavar'> expression </span> becomes true. <span class = 'metavar'> statement list </span> is a sequence of zero or more execution statements. </p>
 
-<h3>IF</h3>
-<pre class='form'><span class='reserved'>IF</span> <span class='metavar'>式</span> <span class='reserved'>THEN</span> <span class='metavar'>実行文1</span></pre>
-<pre class='form'><span class='reserved'>IF</span> <span class='metavar'>式</span> <span class='reserved'>THEN</span> <span class='metavar'>実行文1</span> <span class='reserved'>ELSE</span> <span class='metavar'>実行文2</span></pre>
-<p><span class='metavar'>式</span> の値が真なら <span class='metavar'>実行文1</span>を実行します。</p>
-<p><span class='metavar'>式</span> の値が偽であり <span class='reserved'>ELSE</span> 節が省略されていないならば <span class='metavar'>実行文2</span> を実行します。</p>
-<p>式の値が偽であり <span class='reserved'>ELSE</span> 節が省略されているならば何もせずに次の処理へ移ります。 (一部の処理系では <span class='reserved'>ELSE</span> 節は使えません。)</p>
+<h3> WHILE </h3>
+<pre class = 'form'> <span class = 'reserved'> WHILE </span> <span class = 'metavar'> expression </span> <span class = 'reserved'> DO </span> <span class = 'metavar'> statement </span> </pre>
+If the value of <p> <span class = 'metavar'> expression </span> is false, it will move to the next processing without executing <span class = 'metavar'> statement </span>. </p>
+<p> If the value of the expression is true, execute <span class = 'metavar'> execution statement </span> to return to the evaluation of <span class = 'metavar'> expression </span> again. </p>
 
-<h3>CASE</h3>
-<pre class='form'>
+<h3> IF </h3>
+<pre class = 'form'> <span class = 'reserved'> IF </span> <span class = 'metavar'> expression </span> <span class = 'reserved'> THEN </span> <span class = 'metavar'> statement 1 </span> </pre>
+<pre class = 'form'> <span class = 'reserved'> IF </span> <span class = 'metavar'> expression </span> <span class = 'reserved'> THEN </span> <span class = 'metavar'> statement 1 </span> <span class = 'reserved'> ELSE </span> <span class = 'metavar'> statement 2 </span> </pre>
+If the value of <p> <span class = 'metavar'> expression </span> is true, <span class = 'metavar'> execute statement 1 </span> is executed. </p>
+<p> <span class = 'metavar'> if the value of the expression </span> is false and the <span class = 'reserved'> ELSE </span> clause is not omitted <span class = 'metavar' Execute> statement 2 </span>. </p>
+If the value of the <p> expression is false and the <span class = 'reserved'> ELSE </span> clause is omitted, the process proceeds to the next process without doing anything. (In some implementations, <span class = 'reserved'> ELSE </span> clause
+Can not be used. ) </p>
 
-<span class='reserved'>CASE</span> <span class='metavar'>式0</span> <span class='reserved'>OF</span>
-     <span class='metavar'>式1</span> <span class='metavar'>実行文1</span>
-     ...
-     <span class='metavar'>式k-1</span> <span class='metavar'>実行文k-1</span>
-     <span class='reserved'>ELSE</span> <span class='metavar'>実行文k</span>
-</pre>
-<p><span class='metavar'>式0</span> の値を <span class='metavar'>式1</span> の値と比較して合致すれば <span class='metavar'>実行文1</span> を実行します。 その後は <span class='metavar'>実行文k</span> の次の処理に移ります。</p>
-<p>合致しなければ、同様にして合致するまで次々と式と比較し、合致した式に対応した実行文を実行します。</p>
-<p>式の箇所に予約語 <span class='reserved'>ELSE</span> が有った場合は無条件に合致したものとみなして <span class='metavar'>実行文k</span> を実行します。</p>
-<p><span class='reserved'>CASE</span> 文における <span class='reserved'>ELSE</span> 節は <span class='reserved'>CASE</span> 文の最後の条件であることを示すマーカーでもあるので省略することは出来ません。 <span class='reserved'>ELSE</span> 節に実行すべき実行文がない場合は空文を書いてください。</p>
-<h3>WRITE</h3>
-<pre class='form'>
-<span class='reserved'>WRITE</span> ( <span class='metavar'>式</span> : <span class='metavar'>出力リスト</span> )
-</pre>
-<p>式の値が表す出力装置に対して出力リストの内容を出力します。 数値と出力装置との対応付けについては未定義ですが、一般的に 0 はコンソール画面であるとされています。</p>
-<p>出力リストは以下の出力要素からなり、ひとつ以上の場合はカンマで区切ります。</p>
-<h4>式</h4>
-<p>式を記述します。 十進数左詰めで出力します。</p>
-<h4>右詰め</h4>
-<pre class='form'>
-# ( <span class='metavar'>式1</span> , <span class='metavar'>式2</span> )
-</pre>
-<p><span class='metavar'>式2</span> の値を <span class='metavar'>式1</span> の桁数で十進右詰めで出力します。</p>
-<h4>文字列</h4>
-<pre class='form'>
-&quot; <span class='metavar'>文字列</span> &quot;
-</pre>
-<p>ダブルクォーテーションで囲まれた文字列を出力します。</p>
-<h4>アスキーコード</h4>
-<pre class='form'>
-<span class='reserved'>ASCII</span> ( <span class='metavar'>式</span> )
-</pre>
-<p><span class='metavar'>式</span> で与えられたアスキーコードに相当する文字を出力します。</p>
-<h4>空白</h4>
-<pre class='form'>
-<span class='reserved'>SPACE</span> ( <span class='metavar'>式</span> )
-</pre>
-<p><span class='metavar'>式</span> で与えられた個数分の空白を出力します。 <span class='metavar'>式</span> の値が 0 の場合は何も出力しません。</p>
-<h4>改行</h4>
-<pre class='form'>
-<span class='reserved'>CRLF</span> ( <span class='metavar'>式</span> )
-</pre>
-<pre class='form'>
-<span class='reserved'>CRLF</span>
-</pre>
-<p><span class='metavar'>式</span> で与えられた個数分の改行を出力します。 <span class='metavar'>式</span> の値が 0 の場合は何も出力しません。</p>
-<p><span class='metavar'>式</span> を省略した形式の場合は 1 個の改行を出力します。</p>
-<h4>十六進数</h4>
-<pre class='form'>
-<span class='reserved'>HEX</span> ( <span class='metavar'>式</span> )
-</pre>
-<p><span class='metavar'>式</span> で与えられた値を十六進数 2 桁で出力します。</p>
-<p>一部の処理系では使えません。</p>
+<h3> CASE </h3>
+<pre class = 'form'>
 
-<h3>代入</h3>
-<pre class='form'><span class='metavar'>変数</span> := <span class='metavar'>式</span></pre>
-<pre class='form'><span class='metavar'>変数1</span> , <span class='metavar'>変数2</span> , ... , <span class='metavar'>変数k</span> := <span class='metavar'>式</span></pre>
-<p><span class='metavar'>式</span> の値を <span class='metavar'>変数</span> に代入します。</p>
-<p>変数がカンマで区切られたリストの場合は <span class='metavar'>式</span> の値を左辺全ての変数に代入します。</p>
-<p>代入記号はコロンとイコールの 2 語から成っているのでコロンとイコールの間に空白文字が有っても代入記号として認識されますが、一般的には間を空けずに書きます。</p>
+<span class = 'reserved'> CASE </span> <span class = 'metavar'> expression 0 </span> <span class = 'reserved'> OF </span>
+     <span class = 'metavar'> expression 1 </span> <span class = 'metavar'> statement 1 </span>
+     ...
+     <span class = 'metavar'> expression k-1 </span> <span class = 'metavar'> statement k-1 </span>
+     <span class = 'reserved'> ELSE </span> <span class = 'metavar'> statement k </span>
+</pre>
+If the value of <p> <span class = 'metavar'> expression 0 </span> is compared with the value of <span class = 'metavar'> expression 1 </span> and it matches <span class = 'metavar' Execute> Execution statement 1 </span>. After that, it moves on to the next processing of <span class = 'metavar'> statement k </span>. </p>
+<p> If it does not match, it compares with the expression one after another until it matches in the same way, and executes the execution statement corresponding to the matched expression. </p>
+If there is a reserved word <span class = 'reserved'> ELSE </span> in the <p> part of the expression, it is regarded as unconditional and <span class = 'metavar'> statement k </Run span> </p>
+The <span class = 'reserved'> ELSE </span> clause in the <p> <span class = 'reserved'> CASE </span> statement is the end of the <span class = 'reserved'> CASE </span> statement There is also a marker indicating that it is a condition, so it can not be omitted. If there is no statement to be executed in the <span class = 'reserved'> ELSE </span> clause, write a blank statement. </p>
 
-<h3>手続き呼出し</h3>
-<p>手続きを呼出します。</p>
-<pre class='form'>
-<span class='metavar'>手続き名</span> ( <span class='metavar'>式</span> ,  <span class='metavar'>式</span> , ...  <span class='metavar'>式</span> )
+<h3> WRITE </h3>
+<pre class = 'form'>
+<span class = 'reserved'> WRITE </span> (<span class = 'metavar'> expression </span>: <span class = 'metavar'> output list </span>)
 </pre>
-<pre class='form'>
-<span class='metavar'>手続き名</span>
+Outputs the contents of the output list to the output device represented by the value of <p> expression. Although the correspondence between numbers and output devices is undefined, it is generally assumed that 0 is the console screen. </p>
+<p> The output list consists of the following output elements, separated by commas if more than one. </p>
+<h4> expression </h4>
+<p> Write an expression. Output with decimal number left justified. </p>
+<h4> right justified </h4>
+<pre class = 'form'>
+# (<span class = 'metavar'> expression 1 </span>, <span class = 'metavar'> expression 2 </span>)
 </pre>
-<p>引数をもつ手続きでは実引数を与えて呼出します。 引数を持たない手続きを呼出す場合には丸括弧ごと省略した記法で呼出せますが、引数を持たない手続きを丸括弧を省略せずに記述した場合はエラーです。</p>
-<pre class='example'>
-FOO() % このような呼び方はエラー
+Outputs the value of <p> <span class = 'metavar'> expression 2 </span> with the number of digits of <span class = 'metavar'> expression 1 </span> with decimal right justification. </p>
+<h4> string </h4>
+<pre class = 'form'>
+&quot; <span class = 'metavar'> string </span> &quot;
 </pre>
-<p>実引数の渡し方はいわゆる値渡しに限定されているので、実引数が変数であっても手続きから戻ったときに値は変化しません。</p>
+<p> Output a string enclosed in double quotes. </p>
+<h4> ASCII code </h4>
+<pre class = 'form'>
+<span class = 'reserved'> ASCII </span> (<span class = 'metavar'> expression </span>)
+</pre>
+<p> <span class = 'metavar'> Outputs the character equivalent to the ASCII code given by the expression </span>. </p>
 
-<h3>CALL</h3>
-<p>機械語サブルーチンを呼出します。</p>
-<pre class='form'>
-<span class='reserved'>CALL</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> , <span class='metavar'>H</span> , <span class='metavar'>L</span> )
+<h4> blank </h4>
+<pre class = 'form'>
+<span class = 'reserved'> SPACE </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<pre class='form'>
-<span class='reserved'>CALL</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> , <span class='metavar'>H</span> )
+<p> <span class = 'metavar'> Outputs the number of blanks given by the expression </span>. If the value of <span class = 'metavar'> expression </span> is 0, nothing is output. </p>
+<h4> Line feed </h4>
+<pre class = 'form'>
+<span class = 'reserved'> CRLF </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<pre class='form'>
-<span class='reserved'>CALL</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> )
+<pre class = 'form'>
+<span class = 'reserved'> CRLF </span>
 </pre>
-<pre class='form'>
-<span class='reserved'>CALL</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> )
+<p> <span class = 'metavar'> Outputs the number of line breaks given by the expression </span>. If the value of <span class = 'metavar'> expression </span> is 0, nothing is output. </p>
+<p> <span class = 'metavar'> expression </span> is omitted form 1 newline output. </p>
+<h4> Hex </h4>
+<pre class = 'form'>
+<span class = 'reserved'> HEX </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p>各パラメータは以下の意味を持ちます。</p>
+<p> <span class = 'metavar'> output the value given by the expression </span> in 2 hexadecimal digits. </p>
+<p> Not available on some implementations. </p>
+
+<h3> Assignment </h3>
+<pre class = 'form'> <span class = 'metavar'> variable </span>: = <span class = 'metavar'> expression </span> </pre>
+<pre class = 'form'> <span class = 'metavar'> variable 1 </span>, <span class = 'metavar'> variable 2 </span>, ..., <span class = 'metavar'> Variable k </span>: = <span class = 'metavar'> expression </span> </pre>
+Assign the value of <p> <span class = 'metavar'> expression </span> to <span class = 'metavar'> variable </span>. </p>
+<p> If the variable is a comma separated list, assign the value of <span class = 'metavar'> expression </span> to all variables on the left side. </p>
+<p> Because the assignment symbol consists of two words, colon and equal, even if there is a space character between colon and equal, it is recognized as an assignment symbol, but in general it writes without a space. </p>
+
+<h3> Procedure call </h3>
+<p> Call a procedure. </p>
+<pre class = 'form'>
+<span class = 'metavar'> procedure name </span> (<span class = 'metavar'> expression </span>, <span class = 'metavar'> expression </span>, ... <span class = 'metavar'> expression </span>)
+</pre>
+<pre class = 'form'>
+<span class = 'metavar'> procedure name </span>
+</pre>
+<p> A procedure with arguments is called with an actual argument. When calling a procedure that does not have an argument, you can call it with parentheses omitted, but it is an error if you write a procedure without an argument without omitting the parentheses. </p>
+<pre class = 'example'>
+FOO ()% such a call is an error
+</pre>
+<p> Since the method of passing actual arguments is limited to so-called value passing, even if the actual argument is a variable, the value does not change when returning from the procedure. </p>
+
+<h3> CALL </h3>
+<p> Call a machine language subroutine. </p>
+<pre class = 'form'>
+<span class = 'reserved'> CALL </span> (<span class = 'metavar'> AH </span>, <span class = 'metavar'> AL </span>, <span class = 'metavar'> A </span>, <span class = 'metavar'> H </span>, <span class = 'metavar'> L </span>)
+</pre>
+<pre class = 'form'>
+<span class = 'reserved'> CALL </span> (<span class = 'metavar'> AH </span>, <span class = 'metavar'> AL </span>, <span class = 'metavar'> A </span>, <span class = 'metavar'> H </span>)
+</pre>
+<pre class = 'form'>
+<span class = 'reserved'> CALL </span> (<span class = 'metavar'> AH </span>, <span class = 'metavar'> AL </span>, <span class = 'metavar'> A </span>)
+</pre>
+<pre class = 'form'>
+<span class = 'reserved'> CALL </span> (<span class = 'metavar'> AH </span>, <span class = 'metavar'> AL </span>)
+</pre>
+<p> Each parameter has the following meaning. </p>
 <table>
-<tr><td><span class='metavar'>AH</span></td><td>アドレスの上位 8 ビット</td></tr>
-<tr><td><span class='metavar'>AL</span></td><td>アドレスの下位 8 ビット</td></tr>
-<tr><td><span class='metavar'>A</span></td><td>アキュムレータに与える値</td></tr>
-<tr><td><span class='metavar'>H</span></td><td>80 系 CPU では H レジスタに与える値、 6502 系 CPU では X レジスタに与える値</td></tr>
-<tr><td><span class='metavar'>L</span></td><td>80 系 CPU では L レジスタに与える値、 6502 系 CPU では Y レジスタに与える値</td>
+<tr> <td> <span class = 'metavar'> AH </span> </td> <td> upper 8 bits of address </td> </tr>
+<tr> <td> <span class = 'metavar'> AL </span> </td> <td> lower 8 bits of address </td> </tr>
+<tr> <td> <span class = 'metavar'> A </span> </td> <td> value given to accumulator </td> </tr>
+<tr> <td> <span class = 'metavar'> H </span> </td> The value given to the H register in the 80th series CPU and the value given to the X register in the 6502 series CPU / tr>
+<tr> <td> <span class = 'metavar'> L </span> </td> Value given to L register in 80 series CPUs, Value given to Y register in 6502 series CPUs </td>
 </tr>
 </table>
-<p><span class='metavar'>A</span>, <span class='metavar'>H</span>, <span class='metavar'>L</span> は省略した形式がありますが、省略した場合はそれぞれの値は不定となります。</p>
-<p>この手続きは一部の処理系では利用できません。</p>
+<p> <span class = 'metavar'> A </span>, <span class = 'metavar'> H </span>, <span class = 'metavar'> L </span> may be abbreviated However, if omitted, each value will be undefined. </p>
+<p> This procedure can not be used on some implementations. </p>
 
-<h3>SENSE</h3>
-<p>PC では STOP キー、 APPLE では cont-C が押されているか否かを検出し、押されていればモニタモードに戻ります。</p>
+<h3> SENSE </h3>
+<p> The PC detects whether the STOP key has been pressed, and APPLE has detected whether the cont-C has been pressed. If the key has been pressed, it returns to the monitor mode. </p>
 
-<h2>変数</h2>
-<p>変数はすべて 1 バイト長です。 以下の 4 種類があります。</p>
-<h3>単変数</h3>
-<p><span class='reserved'>VAR</span> 宣言された英字で始まる英数字の列です。</p>
-<p>大域、小域の区別があります。</p>
+<h2> Variables </h2>
+<p> Variables are all 1 byte long. There are 4 types below. </p>
+<h3> Single variable </h3>
+<p> <span class = 'reserved'> VAR </span> An alphanumeric string that begins with a declared letter. </p>
+<p> There is a distinction between global and small areas. </p>
 
-<h3>配列変数</h3>
-<pre class='form'><span class='metavar'>配列変数名</span> [ <span class='metavar'>式</span> ]</pre>
-<p><span class='reserved'>ARRAY</span> 宣言された配列の <span class='metavar'>式</span> 番目の要素です。</p>
-<p>大域、小域の区別があります。</p>
+<h3> Array variable </h3>
+<pre class = 'form'> <span class = 'metavar'> array variable name </span> [<span class = 'metavar'> expression </span>] </pre>
+<p> <span class = 'reserved'> ARRAY </span> The <span class = 'metavar'> expression </span> 's element of a declared array. </p>
+<p> There is a distinction between global and small areas. </p>
 
-<h3>MEM変数</h3>
-<pre class='form'><span class='reserved'>MEM</span> ( <span class='metavar'>式1</span> , <span class='metavar'>式2</span> )</pre>
-<p><span class='metavar'>式1</span> の値を上位、 <span class='metavar'>式2</span> の値を下位のアドレスとするメモリ内の 1 バイト。</p>
+<h3> MEM variable </h3>
+<pre class = 'form'> <span class = 'reserved'> MEM </span> (<span class = 'metavar'> formula 1 </span>, <span class = 'metavar'> formula 2 </span >) </pre>
+<p> <span class = 'metavar'> 1 byte in memory with the value of <span class = 'metavar'> expression 2 </span> as the lower address. </p>
 
-<h3>PORT</h3>
-<pre class='form'><span class='reserved'>PORT</span>  (<span class='metavar'>式</span> )</pre>
-<p>PC 版専用です。</p>
-<p>N-BASIC の INP, OUT に相当します。 代入文の左辺にあれば OUT 、 右辺にあれば INP と同等の作用をします。</p>
+<h3> PORT </h3>
+<pre class = 'form'> <span class = 'reserved'> PORT </span> (<span class = 'metavar'> expression </span>) </pre>
+<p> PC version only. </p>
+<p> Corresponds to INP and OUT of N-BASIC. If it is on the left side of the assignment statement, it acts the same as OUT. If it is on the right side, it acts the same as INP. </p>
 
-<h2>式</h2>
-<h3>定数</h3>
-<p><a href='#number'>数値</a>の項で示した 4 種類のいずれかの形式で定数を表します。</p>
-<h3>関数呼出し</h3>
-<pre class='form'><span class='metavar'>関数名</span> ( <span class='metavar'>式1</span> , <span class='metavar'>式2</span> , ... , <span class='metavar'>式k</span> )</pre>
-<pre class='form'><span class='metavar'>関数名</span></pre>
-<p><span class='reserved'>FUNC</span> 宣言によって宣言された関数、または処理系が用意しているシステム関数 (後述) を呼出します。 引数のない関数を呼出す場合は関数名のみで呼出せます。 引数がない関数を括弧付きの書式で呼出そうとした場合はエラーです。</p>
-<pre class='example'>
-FOO := BAR() % このような呼び方はエラー
+<h2> expression </h2>
+<h3> Constant </h3>
+Represents a constant in one of the four formats shown in <p> <a href='#number'> Numbers </a>. </p>
+<h3> Function call </h3>
+<pre class = 'form'> <span class = 'metavar'> function name </span> (<span class = 'metavar'> formula 1 </span>, <span class = 'metavar'> formula 2 </span>, ..., <span class = 'metavar'> expression k </span>) </pre>
+<pre class = 'form'> <span class = 'metavar'> function name </span> </pre>
+<p> <span class = 'reserved'> Calls a function declared by a <span> declaration or a system function (described later) provided by the processing system. When calling a function without arguments only the function name
+You can call It is an error if you try to call a function without arguments in parenthesized form. </p>
+<pre class = 'example'>
+FOO: = BAR ()% Such a call is an error
 </pre>
-<h4>MHIGH</h4>
-<p>1 バイト同士の掛け算の結果は 2 バイトになり得ますが、式の中では下位 1 バイトしか表現されません。 上位 1 バイトは専用の場所に格納されており、 <span class='reserved'>MHIGH</span> 関数で取出すことが出来ます。</p>
-<h4>MOD</h4>
-<p>割り算すると商が返りますが、同時に余が計算されて専用の場所に格納されており、 <span class='reserved'>MOD</span> 関数で取出すことが出来ます。</p>
-<h4>RND</h4>
-<pre class='form'>
-<span class='reserved'>RND</span> ( <span class='metavar'>式</span> )
+<h4> MHIGH </h4>
+<p> The result of multiplication by 1 byte can be 2 bytes, but only the lower 1 byte is represented in the expression. The upper one byte is stored in a dedicated location, and can be fetched with the <span class = 'reserved'> MHIGH </span> function. </p>
+<h4> MOD </h4>
+<p> The division returns the quotient, but at the same time the remainder is calculated and stored in a dedicated location, and can be retrieved using the <span class = 'reserved'> MOD </span> function. </p>
+<h4> RND </h4>
+<pre class = 'form'>
+<span class = 'reserved'> RND </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p>1 以上 <span class='metavar'>式</span> 以下の一様乱数を返します。</p>
-<h4>GET</h4>
-<pre class='form'>
-<span class='reserved'>GET</span> ( <span class='metavar'>式</span> )
+<p> 1 or more <span class = 'metavar'> expression </span> Returns a uniform random number below. </p>
+
+<h4> GET </h4>
+<pre class = 'form'>
+<span class = 'reserved'> GET </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p><span class='metavar'>式</span> が表す入力装置から 1 文字を入力し、そのアスキーコードの値を返します。</p>
-<p>数値と入力装置の対応付けは未定義ですが、一般に 0 はキーボードであるようです。</p>
-<h4>READ</h4>
-<pre class='form'>
-<span class='reserved'>READ</span> ( <span class='metavar'>式</span> )
+<p> <span class = 'metavar'> Enters one character from the input device represented by the expression </span> and returns the value of its ASCII code. </p>
+<p> The correspondence between numbers and input devices is undefined, but in general 0 seems to be a keyboard. </p>
+<h4> READ </h4>
+<pre class = 'form'>
+<span class = 'reserved'> READ </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p><span class='metavar'>式</span> の値に対応する入力装置から十進数を 1 つ入力し、その値を返します。 RUBOUT コードは区切り記号とみなされます。</p>
-<h4>NOT</h4>
-<pre class='form'>
-<span class='reserved'>NOT</span> ( <span class='metavar'>式</span> )
+<p> <span class = 'metavar'> Enter a decimal number from the input device that corresponds to the value of the expression </span> and return that value. The RUBOUT code is considered as a delimiter. </p>
+<h4> NOT </h4>
+<pre class = 'form'>
+<span class = 'reserved'> NOT </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p>1 の補数を返します。 後述の COM と同じです。</p>
-<h4>NEG</h4>
-<pre class='form'>
-<span class='reserved'>NEG</span> ( <span class='metavar'>式</span> )
+<p> Returns 1's complement. Same as COM below. </p>
+<h4> NEG </h4>
+<pre class = 'form'>
+<span class = 'reserved'> NEG </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p>2 の補数を返します。</p>
-<h4>COM</h4>
-<pre class='form'>
-<span class='reserved'>COM</span> ( <span class='metavar'>式</span> )
+<p> Returns 2's complement. </p>
+<h4> COM </h4>
+<pre class = 'form'>
+<span class = 'reserved'> COM </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p>1 の補数を返します。</p>
-<h4>LSR</h4>
-<pre class='form'>
-<span class='reserved'>LSR</span> ( <span class='metavar'>式</span> )
+<p> Returns 1's complement. </p>
+
+<h4> LSR </h4>
+<pre class = 'form'>
+<span class = 'reserved'> LSR </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p>1 ビット右シフトします。 最上位ビットには 0 が入り、最下位ビットはキャリーに入ります。</p>
-<h4>ASR</h4>
-<pre class='form'>
-<span class='reserved'>ASR</span> ( <span class='metavar'>式</span> )
+<p> Shift right by 1 bit. The most significant bit contains 0 and the least significant bit enters the carry. </p>
+<h4> ASR </h4>
+<pre class = 'form'>
+<span class = 'reserved'> ASR </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p>1 ビット右シフトします。 最上位ビットは変化せず、最下位ビットはキャリーに入ります。</p>
-<h4>ASL</h4>
-<pre class='form'>
-<span class='reserved'>ASL</span> ( <span class='metavar'>式</span> )
+<p> Shift right by 1 bit. The most significant bit does not change and the least significant bit goes into carry. </p>
+<h4> ASL </h4>
+<pre class = 'form'>
+<span class = 'reserved'> ASL </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p>1 ビット左シフトします。 最下位ビットには 0 が入り、最上位ビットはキャリーに入ります。</p>
-<h4>ROR</h4>
-<pre class='form'>
-<span class='reserved'>ROR</span> ( <span class='metavar'>式</span> )
+<p> Shift left by 1 bit. The least significant bit contains 0 and the most significant bit enters the carry. </p>
+<h4> ROR </h4>
+<pre class = 'form'>
+<span class = 'reserved'> ROR </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p>1 ビット右シフトします。 キャリーは最上位ビットに入り、最下位ビットはキャリーに入ります。</p>
-<h4>ROL</h4>
-<pre class='form'>
-<span class='reserved'>ROL</span> ( <span class='metavar'>式</span> )
+<p> Shift right by 1 bit. The carry is in the most significant bit and the least significant bit is in the carry. </p>
+<h4> ROL </h4>
+<pre class = 'form'>
+<span class = 'reserved'> ROL </span> (<span class = 'metavar'> expression </span>)
 </pre>
-<p>1 ビット左シフトします。 キャリーは最下位ビットに入り、最上位ビットはキャリーに入ります。</p>
-<h4>USR</h4>
-<pre class='form'><span class='reserved'>USR</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> , <span class='metavar'>AH</span> , <span class='metavar'>L</span> )</pre>
-<pre class='form'><span class='reserved'>USR</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> , <span class='metavar'>AH</span> )</pre>
-<pre class='form'><span class='reserved'>USR</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> , <span class='metavar'>A</span> )</pre>
-<pre class='form'><span class='reserved'>USR</span> ( <span class='metavar'>AH</span> , <span class='metavar'>AL</span> )</pre>
-<p>CALL 文と機能は同じですが、機械語サブルーチン実行後のアキュムレータの値を返却値として返します。</p>
-<p>処理系によっては使えません。</p>
-<h4>RDHEX</h4>
-<pre class='form'><span class='reserved'>RDHEX</span> (<span class='metavar'>式</span>)</pre>
-<p>入力装置から十六進数1桁を入力します。</p>
-<p>処理系によっては使えません。</p>
-<h4>RRC</h4
-><pre class='form'><span class='reserved'>RRC</span> (<span class='metavar'>式</span>)</pre>
-<p>キャリーを経由せずに式の値を右に 1 ビットシフトします。 最下位ビットは最上位に入ります。</p>
-<p>処理系によっては使えません。</p>
-<h4>RLC</h4>
-<pre class='form'><span class='reserved'>RLC</span> (<span class='metavar'>式</span>)</pre>
-<p>キャリーを経由せずに式の値を左に 1 ビットシフトします。 最上位ビットは最下位ビットに入ります。</p>
-<p>処理系によっては使えません。</p>
-<h3>二項演算子</h3>
-<p>左右に 2 個の項をとって計算する演算子です。</p>
-<pre class='form'><span class='metavar'>項1</span> <span class='metavar'>演算子</span> <span class='metavar'>項2</span></pre>
-<p>演算子の優先順位は表の通りです。 優先順位の同じ演算子は左結合します。</p>
+<p> Shift left by 1 bit. The carry is in the least significant bit and the most significant bit is in the carry. </p>
+
+<h4> USR </h4>
+<pre class = 'form'> <span class = 'reserved'> USR </span> (<span class = 'metavar'> AH </span>, <span class = 'metavar'> AL </span>, <span class = 'metavar'> A </span>, <span class = 'metavar'> AH </span>, <span class = 'metavar'> L </span>) </pre>
+<pre class = 'form'> <span class = 'reserved'> USR </span> (<span class = 'metavar'> AH </span>, <span class = 'metavar'> AL </span>, <span class = 'metavar'> A </span>, <span class = 'metavar'> AH </span>) </pre>
+<pre class = 'form'> <span class = 'reserved'> USR </span> (<span class = 'metavar'> AH </span>, <span class = 'metavar'> AL </span>, <span class = 'metavar'> A </span>) </pre>
+<pre class = 'form'> <span class = 'reserved'> USR </span> (<span class = 'metavar'> AH </span>, <span class = 'metavar'> AL </span>) </pre>
+<p> The function is the same as the CALL statement, but the value of the accumulator after the execution of the machine language subroutine is returned as the return value. </p>
+<p> It can not be used depending on the processing system. </p>
+<h4> RDHEX </h4>
+<pre class = 'form'> <span class = 'reserved'> RDHEX </span> (<span class = 'metavar'> expression </span>) </pre>
+<p> Enter one hexadecimal digit from the input device. </p>
+<p> It can not be used depending on the processing system. </p>
+<h4> RRC </h4
+> <pre class = 'form'> <span class = 'reserved'> RRC </span> (<span class = 'metavar'> expression </span>) </pre>
+<p> Shifts the value of the expression one bit to the right without going through carry. The least significant bit is the most significant. </p>
+<p> It can not be used depending on the processing system. </p>
+<h4> RLC </h4>
+<pre class = 'form'> <span class = 'reserved'> RLC </span> (<span class = 'metavar'> expression </span>) </pre>
+<p> Shifts the value of the expression one bit to the left without going through carry. The most significant bit is in the least significant bit. </p>
+<p> It can not be used depending on the processing system. </p>
+
+<h3> Binary operator </h3>
+<p> This is an operator that calculates two terms on the left and right. </p>
+<pre class = 'form'> <span class = 'metavar'> term 1 </span> <span class = 'metavar'> operator </span> <span class = 'metavar'> term 2 </span> </pre>
+The precedence of <p> operators is as shown in the table. Operators with the same precedence are left coupled. </p>
 <table>
-<tr><td>①</td><td>乗除算演算子</td></tr>
-<tr><td>②</td><td>加減算演算子</td></tr>
-<tr><td>③</td><td>関係演算子</td></tr>
-<tr><td>④</td><td>論理演算子</td></tr>
-<tr><td>⑤</td><td>キャリー付き加減算演算子</td></tr>
+<tr> <td> 1 </td> <td> multiplication and division operator </td> </tr>
+<tr> <td> 2 </td> <td> addition-subtraction operator </td> </tr>
+<tr> <td> 3 </td> <td> relational operators </td> </tr>
+<tr> <td> 4 </td> <td> logical operators </td> </tr>
+<tr> <td> 5 </td> <td> carry with addition / subtraction operator </td> </tr>
 </table>
-<p>優先順位を変更したい場合は式括弧を使用します。 以下 3 種類の括弧が式括弧として使えますが標準的には丸括弧を用いることとします。</p>
-<pre class='form'>{ <span class='metavar'>式</span> }</pre>
-<pre class='form'>[ <span class='metavar'>式</span> ]</pre>
-<pre class='form'>( <span class='metavar'>式</span> )</pre>
-<p>記号ではなく識別子の演算子については空白文字と解釈されるピリオドを両側に置く習慣があります。 私見ですが、関数呼出しとの区別をしやすくする工夫だと考えられます。</p>
-<pre class='example'>.<span class='reserved'>AND</span>.</pre>
+<p> Use expression brackets if you want to change the priority. The following three types of parentheses can be used as expression brackets, but in the standard case we will use parentheses. </p>
+<pre class = 'form'> {<span class = 'metavar'> expression </span>} </pre>
+<pre class = 'form'> [<span class = 'metavar'> expression </span>] </pre>
+<pre class = 'form'> (<span class = 'metavar'> expression </span>) </pre>
+It is customary to put periods on both sides that are interpreted as whitespace for the operator of the identifier rather than the <p> symbol. In my opinion, it is thought to be a device that makes it easier to distinguish from function calls. </p>
+<pre class = 'example'>. <span class = 'reserved'> AND </span>. </pre>
 
-<h4>乗除算演算子</h4>
+<h4> Multiplication division operator </h4>
 <table>
-<tr><td>*</td><td>乗算</td></tr>
-<tr><td>/</td><td>除算の商</td></tr>
-</table>
-
-<h4>加減算演算子</h4>
-<table>
-<tr><td>+</td><td>加算</td></tr>
-<tr><td>-</td><td>減算</td></tr>
-</table>
-
-<h4>関係演算子</h4>
-<p>2 つの値を比較して真偽値を返します。 <span class='reserved'>GT</span> と <span class='reserved'>LT</span> は左右の数値を 2 の補数表現の符号付き二進数とみなして比較します。 その他の演算子は数を符号なし二進数と解釈します。</p>
-<table>
-<tr><td>&gt;</td><td>大きい</td></tr>
-<tr><td>&lt;</td><td>小さい</td></tr>
-<tr><td>#</td><td>等しくない</td></tr>
-<tr><td>=</td><td>等しい</td></tr>
-<tr><td><span class='reserved'>GT</span></td><td>大きい</td></tr>
-<tr><td><span class='reserved'>LT</span></td><td>大きい</td></tr>
+<tr> <td> * </td> <td> multiplication </td> </tr>
+<tr> <td> / </td> <td> quotient of division </td> </tr>
 </table>
 
-<h4>論理演算子</h4>
+<h4> Addition-subtraction operator </h4>
 <table>
-<tr><td class='reserved'>AND</td><td>論理積</td></tr>
-<tr><td class='reserved'>OR</td><td>論理和</td></tr>
-<tr><td class='reserved'>EOR</td><td>排他的論理和</td></tr>
+<tr> <td> + </td> <td> addition </td> </tr>
+<tr> <td>-</td> <td> subtraction </td> </tr>
 </table>
 
-<h4>キャリー付き加減算演算子</h4>
-<p>二項を足した上でキャリーの値を足す、または二項を減算した上でキャリーの値を引く演算子です。</p>
+<h4> Relational operator </h4>
+<p> Compares two values ​​and returns a boolean value. <span class = 'reserved'> GT </span> and <span class = 'reserved'> LT </span> compare and compare left and right numbers as signed binary numbers in 2's complement representation. Other operators interpret numbers as unsigned binary. </p>
 <table>
-<tr><td class='reserved'>ADC</td><td>キャリー付き加算</td></tr>
-<tr><td class='reserved'>SBC</td><td>ボロー付き減算</td></tr>
+<tr> <td> &gt; </td> <td> large </td> </tr>
+<tr> <td> &lt; </td> <td> small </td> </tr>
+<tr> <td> # </td> <td> not equal </td> </tr>
+<tr> <td> = </td> <td> equal </td> </tr>
+<tr> <td> <span class = 'reserved'> GT </span> </td> <td> large </td> </tr>
+<tr> <td> <span class = 'reserved'> LT </span> </td> <td> large </td> </tr>
 </table>
-<p>システム関数の一部がフラグを変化させることが明記されている他はどの処理がフラグを変化させるかは未定義です。 一般に加減算はフラグを変化させるようですが、処理系によっては配列要素へアクセスしたときに変化させてしまう場合もあるようです。 キャリー付き加減算は加減算の直後に限って使うのが安全であると考えられます。</p>
+
+<h4> Logical operator </h4>
+<table>
+<tr> <td class = 'reserved'> AND </td> <td> logical product </td> </tr>
+<tr> <td class = 'reserved'> OR </td> <td> disjunction </td> </tr>
+<tr> <td class = 'reserved'> EOR </td> <td> exclusive OR </td> </tr>
+</table>
+
+<h4> Carry with addition and subtraction operator </h4>
+<p> An operator that adds two terms and adds the carry value, or subtracts two terms and subtracts the carry value. </p>
+<table>
+<tr> <td class = 'reserved'> ADC </td> <td> Add with Carry </td> </tr>
+<tr> <td class = 'reserved'> SBC </td> <td> subtraction with borrow </td> </tr>
+</table>
+<p> While it is specified that part of the system function changes the flag, it is undefined which process changes the flag. In general, addition and subtraction seem to change the flag, but depending on the processing system, it may be changed when accessing an array element. It is considered safe to use carry addition / subtraction only immediately after addition / subtraction. </p>
 </body>
+
 </html>

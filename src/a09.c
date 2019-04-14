@@ -957,7 +957,8 @@ setlabel(struct symrecord * lp)
  if(lp) {
   if(lp->cat!=13&&lp->cat!=6) {
    if(lp->cat!=2||lp->value!=loccounter)
-     lp->value=loccounter; // seterror(8);
+     lp->value=loccounter; 
+     if (pass==1) seterror(8);
   } else {
    lp->cat=2;
    lp->value=loccounter;
@@ -1278,10 +1279,10 @@ pseudoop(int co,struct symrecord * lp)
  case 7:/* FCB */
         generate();
         setlabel(lp);
+        skipspace();
 fcb:
         do {
         if(*srcptr==',')srcptr++;
-        skipspace();
         if(*srcptr=='\"') {
          srcptr++;
          while(*srcptr!='\"'&&*srcptr)
@@ -1291,7 +1292,6 @@ fcb:
           putbyte(scanexpr(0));
           if(unknown&&pass==2)seterror(4);
         }
-        skipspace();
         } while(*srcptr==',');
         break;
  case 8:/* FCC */
@@ -1302,7 +1302,7 @@ fcb:
         while(*srcptr!=c&&*srcptr)
           putbyte(*srcptr++);
         if(*srcptr==c)srcptr++;
-        if(*srcptr==',') goto fcb;
+        if(*srcptr==',') { srcptr++; goto fcb; }
         break;
  case 9:/* FDB */
         generate();

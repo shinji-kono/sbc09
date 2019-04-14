@@ -31,6 +31,7 @@ DBUF   RMB 3
 XR     RMB 2
 YR     RMB 2
 ZR     RMB 2
+arg    equ .
 PFTBEG RMB 2     prog/func table
 PC     RMB 2
 SREG   RMB 2
@@ -46,6 +47,7 @@ GLL    RMB 1     left value g 0xff / local l
 AMODE  RMB 1
 ACC    RMB 1
 LSIZE  RMB 1     local variable size (including arguments )
+GSIZE  RMB 1     global variable including array
 TCOUNT RMB 1     1 search reserved word only, 5 search all local/global var/array, proc
 TEND   RMB 2     table end (search start from here ) include local name
 WEND   RMB 2     word end
@@ -53,6 +55,8 @@ PMODE  RMB 1     0x20 main,  1 proc, 0 ?
 RSW    RMB 1     0 word lookup, 0xff word register mode in tlook
 GEND   RMB 2     end of global name
 SSW    RMB 1
+runmod RMB 1
+modofs RMB 2     module library offset
 
 filepath rmb   2
 parmptr  rmb   2
@@ -68,7 +72,7 @@ LIBR     equ   .
 ioentry  rmb   $80
 readbuff rmb   bufsiz+1
 
-OBJSTART RMB 2+12
+OBJSTART RMB 10
 
 
 * OBJECT PG AREA
@@ -85,7 +89,37 @@ name     fcs   /TL1/
          fcb   edition
 
 
-start    clr   <stdin
+** OBJECT START
+******
+C      tst    <runmod
+       beq    c2
+       lbra   modend
+c2     leas   OBJECT,u
+VARPTR lda    INDN
+       lbsr  close
+       clra       os9 stdin
+       sta   INDN
+       inca
+       sta   OUTDN
+       LDX   <PC
+       leay  ,x
+OBJMP  JMP   OBJECT,u
+
+
+start    LEAY OBJECT,u
+         STY PC
+         lda   ,x
+         cmpa  #'-'
+         bne   run
+         leax  1,x
+         lda   ,x+
+         cmpa  #'c'
+         bne   run
+         lbsr  modsetup
+         bra   fread 
+run      ldy   #-2              17 xx xx
+         sty   modofs
+fread    clr   <stdin
          stx   <parmptr         save parameter pointer
          stu   <work            save parameter pointer
          lda   #READ.           read access mode
@@ -98,38 +132,6 @@ start    clr   <stdin
          stx   <adr
          lbra  comp
 
-copytbl
-         pshs  y,x,u
-         leau  LIBR,y
-         leax  iotbl,pcr
-         leay  iotblend,pcr
-         ldy   #(iotblend-iotbl)
-l1       ldb   #$7e     * JMP
-         stb   ,u+
-         ldd   ,x++
-         addb  1,s
-         adca  ,s
-         std   ,u++
-         cmpx  2,s
-         ble   l1
-         puls  x,y,u
-iotbl
-         fdb   getchar-iotbl            ; 0
-         fdb   putchar-iotbl            ; 3
-         fdb   getline-iotbl            ; 6
-         fdb   putline-iotbl            ; 9
-         fdb   putcr-iotbl              ; $C
-         fdb   getpoll-iotbl            ; $F
-         fdb   xopenin-iotbl            ; $12
-         fdb   xopenout-iotbl           ; $15
-         fdb   xabortin-iotbl           ; $18
-         fdb   xclosein-iotbl           ; $1B
-         fdb   xcloseout-iotbl          ; $1E
-         fdb   delay-iotbl              ; $21
-         fdb   noecho-iotbl             ; $24
-         fdb   setecho-iotbl            ; $27
-         fdb   exit-iotbl               ; $2a
-iotblend
 **
 COMP   CLRA
        STA OUTDN
@@ -160,8 +162,6 @@ tbl1   lda ,x+
        decb
        bne tbl1
        sty TEND
-       LEAX OBJECT,u
-       STX PC
 ** 
        LBSR CRLF
        BSR REG0
@@ -176,6 +176,8 @@ tbl1   lda ,x+
        CLR LSIZE
        BSR REG0
        LBSR PROG 
+       LDB  LSIZE
+       STB  GSIZE
        LBSR STPOUT
        LDX TEND
        STX GEND
@@ -299,7 +301,7 @@ SS2    CMPA #$50
 WORD1  LBRA WORD
 **
 STPOUT LBSR PUTHSL
-       FCB 3,$7E
+       FCB 3,$16
        FDB exit
        RTS
 **
@@ -336,7 +338,7 @@ ASSIGN LDB GL
        PSHS B
        LDB VAL
        PSHS B
-       CMPA #5
+       CMPA #5        local array
        BNE ASS1
        LBSR SUBSC1
        LDB ,S
@@ -350,7 +352,7 @@ AS0    ADDB OPER
        STB ,S
        CLR LSW
        BRA   AS1
-ASS1   CMPA #6
+ASS1   CMPA #6        global array
        BNE ASS2 
        LBSR DSUBSC 
        LDA #2
@@ -358,18 +360,18 @@ ASS1   CMPA #6
 ASS2    CMPA #4
        BEQ *+5 
        LBRA ERROR 
-       LBSR WORD 
+       LBSR WORD      local var
 AS1    CLRA 
 AS2    PSHS  A 
        LDA SY
-       CMPA #$3C
+       CMPA #$3C     ,
        BNE  *+9
        LBSR  WORD 
        BSR   ASSIGN
        BRA   AS3
-       LDA   #$3D 
+       LDA   #$3D    :
        LBSR  CHECK
-       LDA   #$27 
+       LDA   #$27    =
        LBSR  CHECK
        LBSR  EXPR
 AS3    PULS D
@@ -442,11 +444,15 @@ SS7    DECB
        LBSR EXPR
        LDA #$64       do
        LBSR CHECK
-       BSR ASTOUT
-       LDD  #$3402     pshs a
+       INC  LSIZE
+       LDA  #$A7      sta
+       LDB  LSIZE
        LBSR PUTAB
+       pshs b
+       BSR ASTOUT
        LBSR STAT
-       LDD  #$3502      puls a
+       puls b
+       lda  #$A6      lda
        LBSR PUTAB
        PULS D
        STA GLL
@@ -549,7 +555,7 @@ WTEN   LDA #$3B
 WTERM  CMPA #$6C      string
        BNE WR1
        LBSR PUTHSL
-       FDB $03BD
+       FDB $0317
        FDB PUTSTR
        LDA CH
 WR01   CMPA #'"'     copy until '"'
@@ -568,14 +574,14 @@ WR1    CMPA #$6B
        CMPA #$37
        BEQ WR2
        LBSR PUTHSL
-       FDB $03BD
+       FDB $0317
        FDB CRLF
        RTS
 **
 WR2    LBSR WEXPR
        BSR WTEN
        LBSR PUTHSL
-       FDB $03BD
+       FDB $0317
        FDB CRLFA
        RTS
 **
@@ -583,7 +589,7 @@ WR3    CMPA #$6A
        BNE WR4
        LBSR SUBSC
        LBSR PUTHSL
-       FDB $03BD
+       FDB $0317
        FDB SPACEA
        RTS
 **
@@ -591,7 +597,7 @@ WR4    CMPA #$A9
        BNE WR5
        LBSR SUBSC
        LBSR PUTHSL
-       FDB $03BD
+       FDB $0317
        FDB PUTCA
        RTS
 **
@@ -600,13 +606,13 @@ WR5    CMPA #$26
        LBSR DSUBSC
        LBSR PUTPLB
        LBSR PUTHSL
-       FDB $03BD
+       FDB $0317
        FDB PUTDA+1
        BRA WR66
 **
 WR6    LBSR EXPR
        LBSR PUTHSL
-       FDB $03BD
+       FDB $0317
        FDB PUTDA
 WR66   
 RTS11  RTS
@@ -987,12 +993,12 @@ ME3    BSR PUTPUL
        BHS ME4
        LBSR PUTHSL
        FCB 3
-       FCB $BD
+       FCB $17
        FDB MULT
        BRA ME1
 ME4    LBSR PUTHSL
        FCB 3
-       FCB $BD
+       FCB $17
        FDB DIV
        BRA ME1
 **
@@ -1089,7 +1095,7 @@ PFC3   BEQ PFC4
        LEAX 2,X
        DECA
        BRA PFC3
-PFC4   LDA #$BD
+PFC4   LDA #$17
        LBSR PUTA
        LDD ,X
        LBRA PUTAB
@@ -1106,7 +1112,7 @@ TM6    CMPA #$70
        BNE TM61 
        BSR SUBSC
        LBSR PUTHSL
-       FCB $03BD
+       FCB $0317
        FDB RND
        RTS
 * FUNTION GET
@@ -1117,7 +1123,7 @@ TM61   CMPA #$71
        FDB $0297
        FCB INDN
        LBSR PUTHSL
-       FCB $03BD
+       FCB $0317
        FDB getchar
        RTS
 * FUNCTION READ 
@@ -1228,16 +1234,22 @@ DEFPF  BSR SETPFT
        STX YR 
        LDX XR 
        LEAX 1,X
-       BSR PCST 
+       BSR RPCST 
        LDX YR
 DP1    BEQ RT10
        LDX ,X
        STX ZR
        LDX YR
-       BSR PCST 
+       BSR RPCST 
        LDX ZR
        STX YR
        BRA DP1
+RPCST  LDD PC
+       pshs x
+       subd ,s++
+       subd #2
+       STD ,X
+       RTS
 **
 * CALL PORC-FUNC
 **
@@ -1246,7 +1258,7 @@ CALPF  BSR SETPFT
        CMPA PFMAX
        BCS *+4
        STA PFMAX
-       LDA #$BD
+       LDA #$17
        BSR AOUT
        LDX XR
        LDD 1,X
@@ -1274,7 +1286,7 @@ PCST   LDD PC
 STAABX STD ,X
 RT10   RTS
 **
-JMPOUT LDA #$7E
+JMPOUT LDA #$16
 AOUT   LDX PC
        STA ,X
        BRA INCPC1
@@ -1291,7 +1303,10 @@ PULSTK LDX SP
 PULJMP BSR JMPOUT
        BSR PULSTK
 PCST2  LDX PC
-       BSR STAABX
+       pshs x
+       subd ,s++
+       subd #2
+       std  ,x
 INCPC  LEAX 1,X
 INCPC1 LEAX 1,X
 SETPC  STX PC
@@ -1339,7 +1354,7 @@ STCHG  LDD 2,S
        RTS
 **
 * PUTHSL output with address calculation
-*   only working on 3 byte 7E/BD (JMP/JSR)
+*   only working on 3 byte 16/17 (LBRA/LBSR)
 **
 PUTHSL  LDX ,S++
        LDB ,X+
@@ -1349,6 +1364,8 @@ PUTHSL  LDX ,S++
        leay 0,pcr
        leay d,y
        exg  d,y
+       addd modofs
+       subd pc
        ldy  pc
        std  ,y++
        sty  pc
@@ -1363,7 +1380,7 @@ EL1    BEQ EL
        TST ,X
        BEQ UDERR
 EL2    LEAX 3,X
-        DECA
+       DECA
        BRA EL1
 UDERR  PSHS A
        STA ZR
@@ -1381,18 +1398,129 @@ UDERR  PSHS A
 EL     LDX PC
        LBRA C
 
-** OBJECT START
-******
-C      leas OBJECT,u
-VARPTR lda INDN
-       lbsr close
-       clra       os9 stdin
-       sta INDN
-       inca
-       sta OUTDN
-       LDX <PC
-       leay ,x
-OBJMP  JMP OBJECT,u
+modsetup
+       pshs  x,y,u
+       lda   #$ff
+       sta   <runmod
+       ldy   <pc
+       ldd   #$87CD
+       std   ,y
+       leay  4,y        skip size 
+       ldd   #$0d       module name offset
+       std   ,y++
+       ldd   #$1180     type language
+       std   ,y++
+       ldd   #$1a00     attribue rev
+       leay  5,y
+       *  put module name
+       ldx   ,s
+       bsr   mkmodnam
+       tfr   y,d
+       leax  crt0top,pcr
+       pshs  x
+       subd  ,s++
+       subd  #2
+       std   modofs
+       leau  crt0top,pc
+       ldx   #LIBEND-crt0top
+libcpy lda   ,u+
+       sta   ,y+
+       leax  -1,x
+       bne   libcpy
+       sty   <PC
+       puls   x,y,u,pc
+
+mkmodnam pshs x,y,u
+m7     tfr    x,u
+       lda    ,x+
+       lbeq   ERROR    * no file name
+       cmpa   #' '
+       bne    m2
+       bra    m7
+m0     lda    ,x+
+m2     cmpa   #' '
+       ble    m1
+       cmpa   #'/'
+       beq    m8
+       cmpa   #':'
+       bne    m0
+m8     tfr    x,u
+       bra    m0
+m1     lda    ,u+
+       cmpa   #' '
+       ble    m3
+       cmpa   #'.'
+       beq    m3
+       sta    ,y+
+       bra    m1
+m3     lda    -1,y
+       ora    #$80
+       sta    -1,y
+       clr    ,y+
+       sty    2,s
+       puls  x,y,u,pc
+
+modend leax   OBJECT,u         * header setup
+       ldd    <PC
+       pshs   x
+       subd   ,s++
+       addd   #3
+       std    2,x              module size
+       * header parity
+       clra
+       ldb    #8
+m4     eora   ,x+
+       decb
+       bne    m4
+       eora   #$ff
+       sta    ,x+              header parity
+       leay   crt0,pcr
+       ldd    modofs
+       addd   #11
+       leay   d,y
+       tfr    y,d
+       pshs   x
+       subd   ,s++
+       std    ,x++             start address offset
+       clra 
+       ldb    GSIZE
+       addd   #OBJSTART+100
+       std    ,x             global size
+       * mod CRC
+       pshs   d,u
+       leax   OBJECT,u
+       ldu    <PC
+       lda    #$ff
+       sta    ,u
+       sta    1,u
+       sta    2,u
+       tfr    u,d
+       pshs   x
+       subd   ,s++
+       tfr    d,y
+       os9    F$CRC
+       com    ,u
+       com    1,u
+       com    2,u
+
+       * write to file
+       ldu    2,s
+       leax   OBJECT,u
+       ldd    4,x
+       leax   d,x
+       ldd    #$27f         10 01111111      
+       os9    I$Create
+       lbcs    ERROR
+       sta    ,s
+       ldu    2,s
+       leax   OBJECT,u
+       ldy    2,x           module size
+       lda    ,s
+       os9    I$Write
+       lbcs    ERROR
+       puls   d,u
+       clrb
+       os9    F$Exit          all end
 
 **********************
 * ADVANCE WORD
@@ -1500,6 +1628,8 @@ WTBLEND
 * SUPORTING ROUTINES
 * & I/0 CONTROL
 **
+
+crt0top
 
 **
 * PUSH LB & SET NEW LB
@@ -1792,12 +1922,6 @@ putline                        * Output string at address in X, length in B.
         lda         OUTDN
         OS9         I$WritLn
         PULS        A,B,X,Y,PC
-xopenin
-xopenout
-xabortin
-xclosein
-xcloseout
-        RTS
 
 setecho lda          #1
         bra          sss
@@ -1827,7 +1951,13 @@ delay   PSHS        D,X  * address **$21**
         TFR         D,X
         OS9         F$Sleep
         PULS        D,X,PC
-LIBEND
+
+crt0    stx         <arg
+        leax        OBJSTART,u
+        leay        ,x
+        *   compiled code follows
+
+LIBEND   equ *
 
 
          emod

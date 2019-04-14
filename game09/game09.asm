@@ -15,10 +15,7 @@ edition  set   1
 
          mod   eom,name,tylg,atrv,start,size
 
-
          org   0
-dpage    rmb   $96
-
 DP00     equ     $00
 VAROFS   equ     $04          variabble base 'A'-'Z' until $36
 DP38     equ     $38          variable end
@@ -54,7 +51,11 @@ lineb9b  rmb     2      $A0
 lineend  rmb     2      $A2
 ustack   rmb     128
 linebuf  rmb     252
+         ifeq Level-2
+program  rmb     $d000-.
+         else
 program  rmb     $6000
+         endc
 size     equ   .
 
 name    fcs         "Game09"

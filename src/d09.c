@@ -1457,7 +1457,7 @@ char *suffix;
   else
 	 disp   = pc + 2 - (256 - offset + adoffset);
   fprintf(fp,"%0.2X %0.2X       %s%s       $%0.4X",
-	code, offset, suffix, op->name, disp);
+	code, offset, suffix, op->name, disp & 0xffff);
   return op->bytes;
 }
 
@@ -1477,7 +1477,7 @@ char *suffix;
   else
 	 disp   = pc + 3 - (65536 - offset) + adoffset;
   fprintf(fp,"%0.2X %0.2X %0.2X    %s%s       $%0.4X",
-	code, prog[pc+1], prog[pc+2], suffix, op->name, disp);
+	code, prog[pc+1], prog[pc+2], suffix, op->name, disp & 0xffff);
   return op->bytes;
 }
 

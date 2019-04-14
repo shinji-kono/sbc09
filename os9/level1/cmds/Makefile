@@ -1,14 +1,14 @@
 SRC2  = ../../nitros9-code/level2/cmds
 SRC1  = ../../nitros9-code/level1/cmds
 
-OBJ2 = mdir mfree proc 
+OBJ2 = mdir mfree 
 
-OBJ1 = asm attr calldbg cmp config copy cputype date debug del deldir devs dir dir_cb dirsort  dump  echo edit \
+OBJ1 = asm attr calldbg cmp config copy cputype date debug del deldir devs dir dir_cb dirsort  dump  echo edit disasm \
     error free help ident irqs link list load login makdir pxd pwd procs prompt shellplus sleep tee touch tsmon unlink game09
 
 all : $(OBJ2) $(OBJ1)
 
-A09 = ../../../src/a09 -I ../
+A09 = ../../../src/a09 
 
 clean :
 	rm -rf *.lst $(OBJ2) $(OBJ1)

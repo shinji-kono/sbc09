@@ -13,7 +13,7 @@ all : ${MOD} TL1 mc09
 
 clean : 
 	cd cmds; make clean
-	rm -f $(MOD) *.lst krn.asm 
+	rm -f $(MOD) *.lst krn.asm mc09
 
 LST = -l $@.lst
 
@@ -89,5 +89,6 @@ scf :
 
 TL1 :
 	ln -s ../../TL1 .
+
 mc09 :
 	ln -s ../mc09 .

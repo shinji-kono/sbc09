@@ -25,7 +25,7 @@ edition  set   1
          mod   eom,name,tylg,atrv,start,size
 
          org   0
-ioentry  rmb   $80
+ientry  rmb   $80
 filepath rmb   2
 parmptr  rmb   2
 stdin    rmb   1

@@ -3,7 +3,7 @@ SRC1  = ../../nitros9-code/level1/cmds
 
 OBJ2 = mdir mfree proc procs reboot dmem pmap smap mmap
 
-OBJ1 = asm attr calldbg cmp config copy cputype date debug del deldir devs dir dir_cb dirsort  dump  echo edit \
+OBJ1 = asm attr calldbg cmp config copy cputype date debug del deldir devs dir dir_cb dirsort  dump  echo edit disasm \
     error free help ident irqs link list load login makdir pxd pwd procs prompt shellplus sleep tee touch tsmon unlink \
     game09 sbc09 cat kernel09.s basic.s
 

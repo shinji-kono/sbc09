@@ -12,7 +12,7 @@ all : $(ALL) TL1 mc09
 
 clean : 
 	cd cmds ; make clean
-	rm -rf $(ALL) *.lst *.dSYM
+	rm -rf $(ALL) *.lst *.dSYM mc09
 
 LST = -l $@.lst
 pdisk : 
