@@ -1,0 +1,3437 @@
+
+					 
+					 
+					 
+					 *======================================
+					 *
+					 *  LISP-09 INTERPRETER
+					 *  vers.2.08
+					 *  written by TERUO SERIZAWA
+					 *  1982.11.04
+					 *	83.10.07
+					 *
+					 *======================================
+					 *
+					 *
+					 *	ADDRESS MAP
+					 *
+			   0000  HSHTOP  EQU	$0000
+			   0800  HSHBTM  EQU	HSHTOP+$800
+					 *	atom hash table
+					 *	# of atoms : 1024
+					 *	if contents=0 : undefined
+					 *			 else : pointer to atom information table
+					 *
+			   0800  CELTOP  EQU	HSHBTM
+			   8000  CELBTM  EQU	$8000
+					 *	cell area ( lists and numbers )
+					 *	# of cells : 7680
+					 *
+			   8000  LSPTOP  EQU	CELBTM
+			   94DB  LSPBTM  EQU	XXXXX
+					 *	LISP-09 interpreter
+					 *
+					 *	S stack is here
+			   A000  SSKBTM  EQU	$A000
+			   A000  ATMTOP  EQU	SSKBTM
+					 *	atom information table
+					 *
+					 *  ATMEND indicates table's end ( variable )
+					 *  USKTOP indicates U stack's barrier ( variable )
+					 *	( [USKTOP] == [ATMEND] + 30 )
+					 *
+					 *	U stack is here
+			   C000  USKBTM  EQU	$C000
+					 *
+					 *	$C000-$FFFF FLEX SYSTEM
+					 *
+					 
+					 
+					 *--------------------------------------
+					 *
+					 *	MAIN PROGRAM
+					 *
+					 *--------------------------------------
+					 *
+  8000					   ORG	LSPTOP
+  8000 16   14D8	 COLDS   LBRA   STARTU
+ >8003 16   0003	 WARMS   LBRA   WARMS2
+					 *
+					 *  unbind variables
+					 *
+  8006 17   0A94	 WARMS1  LBSR   UNBIND
+  8009 11B3 813F	 WARMS2  CMPU   USKTOP
+  800D 25   06			   BCS	START
+  800F 1183 C000			 CMPU   #USKBTM
+  8013 25   F1			   BCS	WARMS1
+					 *
+					 *  initialize system
+					 *
+  8015 10CE A000	 START   LDS	#SSKBTM
+  8019 CE   C000			 LDU	#USKBTM
+  801C 8D   14			   BSR	INITIO
+  801E 8D   21			   BSR	INITVA
+  8020 17   058A			 LBSR   TERPRI
+					 *
+					 *
+					 *	LISP system top level function
+					 *
+  8023 17   06D8	 START1  LBSR   READ
+  8026 30   A4			   LEAX   ,Y
+  8028 17   0953			 LBSR   EVAL
+  802B 30   A4			   LEAX   ,Y
+  802D 17   0577			 LBSR   PRINT
+  8030 20   F1			   BRA	START1
+					 *
+					 *  initialize I/O
+					 *
+  8032 17   1138	 INITIO  LBSR   CLOSE
+  8035 7F   8132			 CLR	ECHOSW
+  8038 7F   8139			 CLR	OLDCHR
+  803B BE   80B3			 LDX	IBFP
+  803E 6F   84			   CLR	,X
+  8040 39					RTS
+					 *
+					 *  initialize system variables
+					 *
+  8041 7F   8135	 INITVA  CLR	GOSW
+  8044 7F   8136			 CLR	RTNSW
+  8047 8E   0418			 LDX	#NIL
+  804A BF   8137			 STX	CATCHL
+  804D 39					RTS
+					 
+					 *--------------------------------------
+					 *
+					 *	CONSTANTS AND VARIABLES
+					 *
+					 *--------------------------------------
+					 *
+					 *
+					 *	MACROES
+					 *
+					 TESTS   MACRO
+							 CMPS   #LSPBTM+100
+							 LBCS   ERRSSK
+							 ENDM
+					 *
+					 TESTU   MACRO
+							 CMPU   USKTOP
+							 LBCS   ERRUSK
+							 ENDM
+					 *
+					 *
+					 *	ASCII CHARACTERS
+					 *
+			   0007  BEL	 EQU	$07
+			   0008  BS	  EQU	$08
+			   000A  LF	  EQU	$0A
+			   000C  FF	  EQU	$0C
+			   000D  CR	  EQU	$0D
+			   0018  CAN	 EQU	$18
+					 *
+					 *
+					 *	FUNCTION TYPES
+					 *
+			   0000  N0	  EQU	0
+			   0001  NSUBR   EQU	1
+			   0002  NFSUBR  EQU	2
+			   0003  NLSUBR  EQU	3
+			   0007  NERR	EQU	7
+			   0009  NEXPR   EQU	9
+			   000A  NFEXPR  EQU	10
+			   000C  NMACRO  EQU	12
+					 *
+					 *
+					 *	SYSTEM VARIABLES
+					 *
+			   0064  IBFL	EQU	100
+  804E			   IBF	 RMB	IBFL
+  80B2 00					FCB	0
+  80B3 804E		  IBFP	FDB	IBF
+					 *
+			   0064  ABFL	EQU	100
+  80B5			   ABF	 RMB	ABFL
+  8119 00					FCB	0
+  811A 80B5		  ABFP	FDB	ABF
+					 *
+  811C 30 30 30 30   GBUF	FCC	/0000/
+  8120 0000				  FDB	0
+  8122			   NX	  RMB	4
+  8126			   NY	  RMB	4
+  812A 0000				  FDB	0
+  812C			   NR	  RMB	4
+  8130			   OP	  RMB	2
+					 *
+  8132 00			ECHOSW  FCB	0
+  8133 00			CARSW   FCB	0
+  8134 00			GBCSW   FCB	0
+  8135 00			GOSW	FCB	0
+  8136 00			RTNSW   FCB	0
+  8137 0418		  CATCHL  FDB	NIL
+					 *
+  8139 00			OLDCHR  FCB	0
+  813A 00			NSIGN   FCB	0
+					 *
+  813B 0418		  FREE	FDB	NIL
+  813D A773		  ATMEND  FDB	AAAAA
+  813F A791		  USKTOP  FDB	AAAAA+30
+					 
+					 *--------------------------------------
+					 *
+					 *	ARITHMETIC FUNCTIONS
+					 *
+					 *--------------------------------------
+					 ***
+					 ***  ( QUOTIENT n1 n2 ... )
+					 ***	  val <= n1 / n2 / ...
+					 ***
+  8141 CC   828D	 QUOTIE  LDD	#DIV
+  8144 20   03			   BRA	TIMES1
+					 ***
+					 ***  ( TIMES n1 n2 ... ) LSUBR
+					 ***	  val <= n1 * n2 * ...
+					 ***
+  8146 CC   8316	 TIMES   LDD	#MULT
+  8149 6D   84	   TIMES1  TST	,X
+  814B 2B   53			   BMI	ONE
+  814D 20   0C			   BRA	ARITH
+					 ***
+					 ***  ( DIFFERENCE n1 n2 ... ) LSUBR
+					 ***	  val <= n1 - n2 - ...
+					 ***
+  814F CC   838E	 DIFFER  LDD	#NSUB
+  8152 20   03			   BRA	PLUS1
+					 ***
+					 ***  ( PLUS n1 n2 ... ) LSUBR
+					 ***	  val <= n1 + n2 + ...
+					 ***
+  8154 CC   837F	 PLUS	LDD	#NADD
+  8157 6D   84	   PLUS1   TST	,X
+  8159 2B   3B			   BMI	ZERO
+					 *
+					 *  execute arithmetic functions
+					 *	X : list of arguments
+					 *
+  815B FD   8130	 ARITH   STD	OP
+  815E 36   10			   PSHU   X
+  8160 AE   84			   LDX	,X
+  8162 8D   5A			   BSR	NUMX
+  8164 10AE C4	   ARITH1  LDY	,U
+  8167 10AE 22			   LDY	2,Y
+  816A 10AF C4			   STY	,U
+  816D 10AE A4			   LDY	,Y
+  8170 2B   7A			   BMI	MNA0
+  8172 8D   60			   BSR	NUMY
+  8174 AD   9F 8130		  JSR	[OP]
+  8178 20   EA			   BRA	ARITH1
+					 ***
+					 ***  ( MAX n1 n2 ... ) LSUBR
+					 ***	  val <= maximum value of numbers
+					 ***
+  817A CC   83A8	 MAX	 LDD	#NMAX
+  817D 6D   84			   TST	,X
+  817F 2B   29			   BMI	MINF
+  8181 20   D8			   BRA	ARITH
+					 ***
+					 ***  ( MIN n1 n2 ... ) LSUBR
+					 ***	  val <= minimum value of numbers
+					 ***
+  8183 CC   83B5	 MIN	 LDD	#NMIN
+  8186 6D   84			   TST	,X
+  8188 2B   1B			   BMI	INF
+  818A 20   CF			   BRA	ARITH
+					 ***
+					 ***  ( SIGN n ) SUBR
+					 ***	  if n>0 then val <= 1
+					 ***		 n=0			 0
+					 ***		 n<0			-1
+					 ***
+  818C 8D   30	   SIGN	BSR	NUMX
+  818E 2B   0B			   BMI	MONE
+  8190 26   0E			   BNE	ONE
+  8192 EC   02			   LDD	2,X
+  8194 26   0A			   BNE	ONE
+					 *
+					 *  value <= 0
+					 *
+  8196 8E   8414	 ZERO	LDX	#ZEROV
+  8199 20   53			   BRA	MNA
+					 *
+					 * value <= -1
+					 *
+  819B 8E   841C	 MONE	LDX	#MONEV
+  819E 20   4E			   BRA	MNA
+					 *
+					 *  value <= 1
+					 *
+  81A0 8E   8416	 ONE	 LDX	#ONEV
+  81A3 20   49			   BRA	MNA
+					 *
+					 *  value <= infinity ( largest number )
+					 *
+  81A5 8E   841A	 INF	 LDX	#INFV
+  81A8 20   44			   BRA	MNA
+					 *
+					 *  value <= minus infinity ( smallest number )
+					 *
+  81AA 8E   8412	 MINF	LDX	#MINFV
+  81AD 20   3F			   BRA	MNA
+					 *
+					 *  transpose numerical atom(s) into number register(s)
+					 *
+  81AF 102A 0397	 NUMS	LBPL   ERRNUM
+  81B3 47					ASRA
+  81B4 56					RORB
+  81B5 85   20			   BITA   #$20
+  81B7 26   32			   BNE	NUMRTS
+  81B9 84   3F			   ANDA   #$3F
+  81BB 39					RTS
+					 *
+  81BC 8D   16	   NUMXY   BSR	NUMY
+  81BE 8C   0800	 NUMX	CMPX   #CELTOP
+  81C1 1025 0385			 LBCS   ERRNUM
+  81C5 EC   02			   LDD	2,X
+  81C7 FD   8124			 STD	NX+2
+  81CA EC   84			   LDD	,X
+  81CC 8D   E1			   BSR	NUMS
+  81CE 8E   8122			 LDX	#NX
+  81D1 ED   84			   STD	,X
+  81D3 39					RTS
+					 *
+  81D4 108C 0800	 NUMY	CMPY   #CELTOP
+  81D8 1025 036E			 LBCS   ERRNUM
+  81DC EC   22			   LDD	2,Y
+  81DE FD   8128			 STD	NY+2
+  81E1 EC   A4			   LDD	,Y
+  81E3 8D   CA			   BSR	NUMS
+  81E5 108E 8126			 LDY	#NY
+  81E9 ED   A4			   STD	,Y
+  81EB 39			NUMRTS  RTS
+					 *
+					 *  make numerical atom
+					 *	X : number register
+					 *
+  81EC 33   42	   MNA0	LEAU   2,U
+					 *
+  81EE 17   0E8F	 MNA	 LBSR   NEW
+  81F1 EC   84			   LDD	,X
+  81F3 58					ASLB
+  81F4 49					ROLA
+  81F5 8A   80			   ORA	#$80
+  81F7 ED   A4			   STD	,Y
+  81F9 EC   02			   LDD	2,X
+  81FB ED   22			   STD	2,Y
+  81FD 39					RTS
+					 ***
+					 ***  ( ADD1 n ) SUBR
+					 ***	  val <= n + 1
+					 ***
+  81FE 108E 8416	 ADD1	LDY	#ONEV
+  8202 8D   BA	   ADD11   BSR	NUMX
+  8204 17   0178			 LBSR   NADD
+  8207 20   E5			   BRA	MNA
+					 ***
+					 ***  ( SUB1 n ) SUBR
+					 ***	  val <= n - 1
+					 ***
+  8209 108E 841C	 SUB1	LDY	#MONEV
+  820D 20   F3			   BRA	ADD11
+					 ***
+					 ***  ( ABS n ) SUBR
+					 ***	  val <= absolute value of n
+					 ***
+  820F 8D   AD	   ABS	 BSR	NUMX
+  8211 2A   DB			   BPL	MNA
+  8213 20   02			   BRA	MINUS1
+					 ***
+					 ***  ( MINUS n ) SUBR
+					 ***	  val <= - n
+					 ***
+  8215 8D   A7	   MINUS   BSR	NUMX
+  8217 17   00DC	 MINUS1  LBSR   NNEG
+  821A 20   D2			   BRA	MNA
+					 ***
+					 ***  ( LOGAND n1 n2 ) SUBR
+					 ***	  logical <AND> operation
+					 ***	  val <= n1 and n2
+					 ***
+  821C 8D   9E	   LOGAND  BSR	NUMXY
+  821E A4   A4			   ANDA   ,Y
+  8220 E4   21			   ANDB   1,Y
+  8222 ED   84			   STD	,X
+  8224 EC   02			   LDD	2,X
+  8226 A4   22			   ANDA   2,Y
+  8228 E4   23			   ANDB   3,Y
+  822A ED   02			   STD	2,X
+  822C 20   C0			   BRA	MNA
+					 ***
+					 ***  ( LOGOR n1 n2 ) SUBR
+					 ***	  logical <OR> operation
+					 ***	  val <= n1 or n2
+					 ***
+  822E 8D   8C	   LOGOR   BSR	NUMXY
+  8230 AA   A4			   ORA	,Y
+  8232 EA   21			   ORB	1,Y
+  8234 ED   84			   STD	,X
+  8236 EC   02			   LDD	2,X
+  8238 AA   22			   ORA	2,Y
+  823A EA   23			   ORB	3,Y
+  823C ED   02			   STD	2,X
+  823E 20   AE			   BRA	MNA
+					 ***
+					 ***  ( LOGXOR n1 n2 ) SUBR
+					 ***	  logical ,exclusive-OR> operation
+					 ***	  val <= n1 xor n2
+					 ***
+  8240 17   FF79	 LOGXOR  LBSR   NUMXY
+  8243 A8   A4			   EORA   ,Y
+  8245 E8   21			   EORB   1,Y
+  8247 ED   84			   STD	,X
+  8249 EC   02			   LDD	2,X
+  824B A8   22			   EORA   2,Y
+  824D E8   23			   EORB   3,Y
+  824F ED   02			   STD	2,X
+  8251 20   9B			   BRA	MNA
+					 ***
+					 ***  ( REMAINDER n1 n2 ) SUBR
+					 ***	  val <= n1 mod n2
+					 ***
+  8253 17   FF66	 REMAIN  LBSR   NUMXY
+  8256 8D   35			   BSR	DIV
+  8258 30   A4			   LEAX   ,Y
+  825A 20   92			   BRA	MNA
+					 ***
+					 ***  ( DIVIDE n1 n2 ) SUBR
+					 ***	  n1 / n2
+					 ***	  val <= dot pAir of quotient and remainder
+					 ***
+  825C 17   FF5D	 DIVIDE  LBSR   NUMXY
+  825F 8D   2C			   BSR	DIV
+  8261 8D   8B			   BSR	MNA
+  8263 36   20			   PSHU   Y
+  8265 8E   8126			 LDX	#NY
+  8268 8D   84			   BSR	MNA
+  826A 16   0DF8			 LBRA   CONSU
+					 ***
+					 ***  ( GCD n1 n2 ) SUBR
+					 ***	  greatest common divisor
+					 ***	  val <= GCD ( n1, n2 )
+					 ***
+  826D 17   FF4C	 GCD	 LBSR   NUMXY
+  8270 EC   22	   GCD1	LDD	2,Y
+  8272 34   06			   PSHS   D
+  8274 EC   A4			   LDD	,Y
+  8276 34   06			   PSHS   D
+  8278 8D   13			   BSR	DIV
+  827A 35   06			   PULS   D
+  827C ED   84			   STD	,X
+  827E 35   06			   PULS   D
+  8280 ED   02			   STD	2,X
+  8282 EC   22			   LDD	2,Y
+  8284 26   EA			   BNE	GCD1
+  8286 EC   A4			   LDD	,Y
+  8288 26   E6			   BNE	GCD1
+  828A 16   FF61			 LBRA   MNA
+					 *
+					 *  divide NX by NY
+					 *	NX <= NX / NY quotient
+					 *	NY <= NX mod NY remainder
+					 *
+  828D 32   78	   DIV	 LEAS   -8,S
+  828F CC   001E			 LDD	#30
+  8292 ED   64			   STD	4,S
+  8294 A6   84			   LDA	,X
+  8296 2A   04			   BPL	DIV1
+  8298 6C   64			   INC	4,S
+  829A 8D   5A			   BSR	NNEG
+  829C A6   A4	   DIV1	LDA	,Y
+  829E 2B   04			   BMI	DIV2
+  82A0 6C   64			   INC	4,S
+  82A2 8D   41			   BSR	NNEGY
+  82A4 EC   A4	   DIV2	LDD	,Y
+  82A6 ED   E4			   STD	,S
+  82A8 EC   22			   LDD	2,Y
+  82AA ED   62			   STD	2,S
+  82AC CC   0000			 LDD	#0
+  82AF ED   A4			   STD	,Y
+  82B1 ED   22			   STD	2,Y
+  82B3 8D   54			   BSR	NASL3
+  82B5 69   23	   DIV3	ROL	3,Y
+  82B7 69   22			   ROL	2,Y
+  82B9 69   21			   ROL	1,Y
+  82BB 69   A4			   ROL	,Y
+  82BD EC   22			   LDD	2,Y
+  82BF E3   62			   ADDD   2,S
+  82C1 ED   66			   STD	6,S
+  82C3 EC   A4			   LDD	,Y
+  82C5 E9   61			   ADCB   1,S
+  82C7 A9   E4			   ADCA   ,S
+  82C9 24   06			   BCC	DIV4
+  82CB ED   A4			   STD	,Y
+  82CD EC   66			   LDD	6,S
+  82CF ED   22			   STD	2,Y
+  82D1 69   03	   DIV4	ROL	3,X
+  82D3 69   02			   ROL	2,X
+  82D5 69   01			   ROL	1,X
+  82D7 69   84			   ROL	,X
+  82D9 6A   65			   DEC	5,S
+  82DB 26   D8			   BNE	DIV3
+  82DD 6A   64			   DEC	4,S
+  82DF 32   68			   LEAS   8,S
+  82E1 27   32			   BEQ	DIVRTS
+  82E3 8D   11			   BSR	NNEG
+					 *
+					 *  negate number
+					 *	Y : number register
+					 *
+  82E5 CC   0000	 NNEGY   LDD	#0
+  82E8 A3   22			   SUBD   2,Y
+  82EA ED   22			   STD	2,Y
+  82EC CC   0000			 LDD	#0
+  82EF E2   21			   SBCB   1,Y
+  82F1 A2   A4			   SBCA   ,Y
+  82F3 ED   A4			   STD	,Y
+  82F5 39					RTS
+					 *
+					 *  negate number
+					 *	X : number register
+					 *
+  82F6 CC   0000	 NNEG	LDD	#0
+  82F9 A3   02			   SUBD   2,X
+  82FB ED   02			   STD	2,X
+  82FD CC   0000			 LDD	#0
+  8300 E2   01			   SBCB   1,X
+  8302 A2   84			   SBCA   ,X
+  8304 ED   84			   STD	,X
+  8306 39					RTS
+					 *
+					 *  arithmetic shift left
+					 *	X : number register
+					 *
+  8307 8D   04	   NASL4   BSR	NASL
+  8309 8D   02	   NASL3   BSR	NASL
+  830B 8D   00	   NASL2   BSR	NASL
+  830D 68   03	   NASL	ASL	3,X
+  830F 69   02			   ROL	2,X
+  8311 69   01			   ROL	1,X
+  8313 69   84			   ROL	,X
+  8315 39			DIVRTS  RTS
+					 *
+					 *  multiply NX with NY
+					 *	NX <= NX * NY
+					 *
+					 MMM	 MACRO
+							 LDA	&1,S
+							 LDB	&2,Y
+							 MUL
+							 ENDM
+					 *
+  8316 EC   02	   MULT	LDD	2,X
+  8318 34   06			   PSHS   D
+  831A EC   84			   LDD	,X
+  831C 34   06			   PSHS   D
+  831E					   MMM	3,3
+  8323 ED   02			   STD	2,X
+  8325					   MMM	2,2
+  832A ED   84			   STD	,X
+  832C					   MMM	3,2
+  8331 E3   01			   ADDD   1,X
+  8333 ED   01			   STD	1,X
+  8335 24   02			   BCC	MULT1
+  8337 6C   84			   INC	,X
+  8339			   MULT1   MMM	2,3
+  833E E3   01			   ADDD   1,X
+  8340 ED   01			   STD	1,X
+  8342 24   02			   BCC	MULT2
+  8344 6C   84			   INC	,X
+  8346			   MULT2   MMM	1,3
+  834B E3   84			   ADDD   ,X
+  834D ED   84			   STD	,X
+  834F					   MMM	3,1
+  8354 E3   84			   ADDD   ,X
+  8356 ED   84			   STD	,X
+  8358					   MMM	0,3
+  835D EB   84			   ADDB   ,X
+  835F E7   84			   STB	,X
+  8361					   MMM	1,2
+  8366 EB   84			   ADDB   ,X
+  8368 E7   84			   STB	,X
+  836A					   MMM	2,1
+  836F EB   84			   ADDB   ,X
+  8371 E7   84			   STB	,X
+  8373					   MMM	3,0
+  8378 EB   84			   ADDB   ,X
+  837A E7   84			   STB	,X
+  837C 32   64			   LEAS   4,S
+  837E 39					RTS
+					 *
+					 *  add numbers
+					 *	NX <= NX + NY
+					 *
+  837F EC   02	   NADD	LDD	2,X
+  8381 E3   22			   ADDD   2,Y
+  8383 ED   02			   STD	2,X
+  8385 EC   84			   LDD	,X
+  8387 E9   21			   ADCB   1,Y
+  8389 A9   A4			   ADCA   ,Y
+  838B ED   84			   STD	,X
+  838D 39					RTS
+					 *
+					 *  subtract numbers
+					 *	NX <= NX - NY
+					 *
+  838E EC   02	   NSUB	LDD	2,X
+  8390 A3   22			   SUBD   2,Y
+  8392 ED   02			   STD	2,X
+  8394 EC   84			   LDD	,X
+  8396 E2   21			   SBCB   1,Y
+  8398 A2   A4			   SBCA   ,Y
+  839A ED   84			   STD	,X
+  839C 39					RTS
+					 *
+					 *  compare numbers
+					 *	CCR <= NX - NY
+					 *
+  839D EC   02	   NCMP	LDD	2,X
+  839F A3   22			   SUBD   2,Y
+  83A1 EC   84			   LDD	,X
+  83A3 E2   21			   SBCB   1,Y
+  83A5 A2   A4			   SBCA   ,Y
+  83A7 39					RTS
+					 *
+					 *	NX <= max ( NX, NY )
+					 *
+  83A8 8D   F3	   NMAX	BSR	NCMP
+  83AA 2C   08			   BGE	MAXRTS
+  83AC EC   A4	   NMAX1   LDD	,Y
+  83AE ED   84			   STD	,X
+  83B0 EC   22			   LDD	2,Y
+  83B2 ED   02			   STD	2,X
+  83B4 39			MAXRTS  RTS
+					 *
+					 *	NX <= min ( NX, NY )
+					 *
+  83B5 8D   E6	   NMIN	BSR	NCMP
+  83B7 2C   F3			   BGE	NMAX1
+  83B9 39					RTS
+					 ***
+					 ***  ( RND n ) SUBR
+					 ***	  generate random number
+					 ***	  val <= 0 .. n-1
+					 ***
+  83BA 17   FE01	 RND	 LBSR   NUMX
+  83BD 8E   812C			 LDX	#NR
+  83C0 108E 840E			 LDY	#RNDV
+  83C4 17   FF4F			 LBSR   MULT
+  83C7 108E 8416			 LDY	#ONEV
+  83CB 8D   B2			   BSR	NADD
+  83CD 31   1E			   LEAY   -2,X
+  83CF 8E   8122			 LDX	#NX
+  83D2 17   FF41			 LBSR   MULT
+  83D5 30   1E			   LEAX   -2,X
+  83D7 16   FE14			 LBRA   MNA
+					 ***
+					 ***  ( INC 'var ) FSUBR
+					 ***	  increae value of var by 1
+					 ***	  (SETQ var (ADD1 var))
+					 ***
+  83DA AE   84	   INC	 LDX	,X
+  83DC 102B 00ED			 LBMI   ERROR
+  83E0 8C   0800			 CMPX   #CELTOP
+  83E3 1024 012C			 LBCC   ERRATM
+  83E7 AE   84			   LDX	,X
+  83E9 34   10			   PSHS   X
+  83EB AE   84			   LDX	,X
+  83ED 17   FE0E			 LBSR   ADD1
+  83F0 10AF F1			   STY	[,S++]
+  83F3 39					RTS
+					 ***
+					 ***  ( DEC 'var ) FSUBR
+					 ***	  decrease value of var by 1
+					 ***	  (SETQ var (SUB1 var))
+					 ***
+  83F4 AE   84	   DEC	 LDX	,X
+  83F6 102B 00D3			 LBMI   ERROR
+  83FA 8C   0800			 CMPX   #CELTOP
+  83FD 1024 0112			 LBCC   ERRATM
+  8401 AE   84			   LDX	,X
+  8403 34   10			   PSHS   X
+  8405 AE   84			   LDX	,X
+  8407 17   FDFF			 LBSR   SUB1
+  840A 10AF F1			   STY	[,S++]
+  840D 39					RTS
+					 *
+					 *  numerical constants
+					 *
+  840E 0019 660D	 RNDV	FDB	$0019,$660D
+  8412 2000		  MINFV   FDB	$2000
+  8414 0000		  ZEROV   FDB	$0000
+  8416 0000 0001	 ONEV	FDB	$0000,$0001
+  841A 1FFF		  INFV	FDB	$1FFF
+  841C FFFF FFFF	 MONEV   FDB	$FFFF,$FFFF
+					 ***
+					 ***  ( CALL address ) SUBR
+					 ***	  call subroutine
+					 ***	  val <= NIL
+					 ***
+  8420 17   FD9B	 CALL	LBSR   NUMX
+  8423 34   40			   PSHS   U
+  8425 AD   98 02			JSR	[2,X]
+  8428 108E 0418			 LDY	#NIL
+  842C 35   C0			   PULS   U,PC
+					 ***
+					 ***  ( POKE address value(8) ) SUBR
+					 ***	  store Value
+					 ***	  val <= value
+					 ***
+  842E 34   20	   POKE	PSHS   Y
+  8430 17   FD89			 LBSR   NUMXY
+  8433 A6   23			   LDA	3,Y
+  8435 A7   98 02			STA	[2,X]
+  8438 35   A0			   PULS   Y,PC
+					 ***
+					 ***  ( PEEK address ) SUBR
+					 ***	  val <= memory value of address
+					 ***
+  843A 17   FD81	 PEEK	LBSR   NUMX
+  843D A6   98 02			LDA	[2,X]
+					 *
+					 *  make numerical atom ( A )
+					 *
+  8440 34   02	   MNAA	PSHS   A
+  8442 17   0C3B			 LBSR   NEW
+  8445 35   02			   PULS   A
+  8447 A7   23			   STA	3,Y
+  8449 6F   22			   CLR	2,Y
+  844B 6F   21	   MNAA1   CLR	1,Y
+  844D 86   80			   LDA	#$80
+  844F A7   A4			   STA	,Y
+  8451 39					RTS
+					 *
+					 *  make numerical atom ( Y )
+					 *
+  8452 30   A4	   MNAY	LEAX   ,Y
+  8454 17   0C29	 MNAX	LBSR   NEW
+  8457 AF   22			   STX	2,Y
+  8459 20   F0			   BRA	MNAA1
+					 ***
+					 ***  ( ATOMLENGTH atom ) SUBR
+					 ***	  val <= length of atom
+					 ***
+  845B 8C   0800	 ATOMLE  CMPX   #CELTOP
+  845E 1024 FD34			 LBCC   ZERO
+  8462 AE   84			   LDX	,X
+  8464 30   07			   LEAX   7,X
+  8466 108E 0000			 LDY	#0
+  846A A6   80	   ATOML1  LDA	,X+
+  846C 27   E4			   BEQ	MNAY
+  846E 31   21			   LEAY   1,Y
+  8470 20   F8			   BRA	ATOML1
+					 ***
+					 ***  ( LENGTH list ) SUBR
+					 ***	  val <= length of list
+					 ***
+  8472 108E 0000	 LENGTH  LDY	#0
+  8476 A6   84	   LENGT1  LDA	,X
+  8478 2B   D8			   BMI	MNAY
+  847A AE   02			   LDX	2,X
+  847C 31   21			   LEAY   1,Y
+  847E 20   F6			   BRA	LENGT1
+							 
+							 
+					 *--------------------------------------
+					 *
+					 *	  ERRORS
+					 *
+					 *--------------------------------------
+					 *
+  8480 0D 0A 07	  ERRM	FCB	CR,LF,BEL
+  8483 2D 2D 45 52		   FCC	/--ERROR-- /,0
+  8487 52 4F 52 2D   
+  848B 2D 20 00	  
+					 *
+  848E 8D   32	   ERRSSK  BSR	ERR
+  8490 53 20 6F 76		   FCC	/S over/,0
+  8494 65 72 00	  
+  8497 8D   29	   ERRUSK  BSR	ERR
+  8499 55 20 6F 76		   FCC	/U over/,0
+  849D 65 72 00	  
+  84A0 8D   20	   ERRGBC  BSR	ERR
+  84A2 43 65 6C 6C		   FCC	/Cell area over/,0
+  84A6 20 61 72 65   
+  84AA 61 20 6F 76   
+  84AE 65 72 00	  
+  84B1 8D   0F	   ERRMSA  BSR	ERR
+  84B3 41 74 6F 6D		   FCC	/Atom area over/,0
+  84B7 20 61 72 65   
+  84BB 61 20 6F 76   
+  84BF 65 72 00	  
+					 *
+  84C2 17   00B2	 ERR	 LBSR   ERRS
+  84C5 35   10			   PULS   X
+  84C7 17   00B8			 LBSR   MSG
+  84CA 16   FB36			 LBRA   WARMS
+					 ***
+					 ***  ( ERROR e1 e2 ) SUBR
+					 ***	  print e1 e2, goto top level
+					 ***
+  84CD 17   0092	 ERROR   LBSR   ERRXY
+  84D0 00					FCB	0
+					 *
+  84D1 17   008E	 ERRCAT  LBSR   ERRXY
+  84D4 43 61 74 63		   FCC	/Catch and Throw/,0
+  84D8 68 20 61 6E   
+  84DC 64 20 54 68   
+  84E0 72 6F 77 00   
+  84E4 8D   7C	   ERRCAR  BSR	ERRXY
+  84E6 43 61 72 20		   FCC	/Car or Cdr of atom/,0
+  84EA 6F 72 20 43   
+  84EE 64 72 20 6F   
+  84F2 66 20 61 74   
+  84F6 6F 6D 00	  
+  84F9 8D   67	   ERRSET  BSR	ERRXY
+  84FB 53 65 74 00		   FCC	/Set/,0
+  84FF 8D   61	   ERRPRG  BSR	ERRXY
+  8501 50 72 6F 67		   FCC	/Prog/,0
+  8505 00			
+  8506 8D   5A	   ERRDE   BSR	ERRXY
+  8508 44 65 66 69		   FCC	/Definition/,0
+  850C 6E 69 74 69   
+  8510 6F 6E 00	  
+  8513 8D   4D	   ERRATM  BSR	ERRXY
+  8515 41 74 6F 6D		   FCC	/Atom expected/,0
+  8519 20 65 78 70   
+  851D 65 63 74 65   
+  8521 64 00		 
+  8523 8D   3D	   ERRSTR  BSR	ERRXY
+  8525 53 74 72 69		   FCC	/String expected/,0
+  8529 6E 67 20 65   
+  852D 78 70 65 63   
+  8531 74 65 64 00   
+  8535 8D   2B	   ERRUND  BSR	ERRXY
+  8537 55 6E 64 65		   FCC	/Undefined Function/,0
+  853B 66 69 6E 65   
+  853F 64 20 46 75   
+  8543 6E 63 74 69   
+  8547 6F 6E 00	  
+  854A 8D   16	   ERRNUM  BSR	ERRXY
+  854C 4E 75 6D 62		   FCC	/Number expected/,0
+  8550 65 72 20 65   
+  8554 78 70 65 63   
+  8558 74 65 64 00   
+  855C 8D   04	   ERRPUT  BSR	ERRXY
+  855E 50 75 74 00		   FCC	/Put/,0
+					 *
+  8562 36   30	   ERRXY   PSHU   X,Y
+  8564 8D   11			   BSR	ERRS
+  8566 35   10			   PULS   X
+  8568 8D   18			   BSR	MSG
+  856A 8D   41			   BSR	TERPRI
+  856C 37   10			   PULU   X
+  856E 8D   37			   BSR	PRINT
+  8570 37   10			   PULU   X
+  8572 8D   33			   BSR	PRINT
+  8574 16   FA8C			 LBRA   WARMS
+					 *
+  8577 17   FAB8	 ERRS	LBSR   INITIO
+  857A 8E   8480			 LDX	#ERRM
+  857D 20   03			   BRA	MSG
+					 
+					 *--------------------------------------
+					 *
+					 *	  OUTPUT
+					 *
+					 *--------------------------------------
+					 *
+					 *  print message
+					 *	X : top of message
+					 *
+  857F 17   0080	 MSG0	LBSR   OUT
+  8582 A6   80	   MSG	 LDA	,X+
+  8584 26   F9			   BNE	MSG0
+  8586 39					RTS
+					 ***
+					 ***  ( CRLF num(16) ) SUBR
+					 ***	  print crlfs
+					 ***	  val <= NIL
+					 ***
+  8587 17   FC34	 CRLF	LBSR   NUMX
+  858A AE   02			   LDX	2,X
+  858C 27   14			   BEQ	PRIRTS
+  858E 8D   1D	   CRLF1   BSR	TERPRI
+  8590 30   1F			   LEAX   -1,X
+  8592 26   FA			   BNE	CRLF1
+  8594 39					RTS
+					 ***
+					 ***  ( SPACES num(16) ) SUBR
+					 ***	  print blanks
+					 ***	  val <= NIL
+					 ***
+  8595 17   FC26	 SPACES  LBSR   NUMX
+  8598 AE   02			   LDX	2,X
+  859A 27   06			   BEQ	PRIRTS
+  859C 8D   05	   SPACE1  BSR	BLANK
+  859E 30   1F			   LEAX   -1,X
+  85A0 26   FA			   BNE	SPACE1
+  85A2 39			PRIRTS  RTS
+					 *
+					 *  print blank
+					 *
+  85A3 86   20	   BLANK   LDA	#' 
+  85A5 20   5B			   BRA	OUT
+					 ***
+					 ***  ( PRIANT e ) SUBR
+					 ***	  print e, print crlf
+					 ***	  val <= e
+					 ***
+  85A7 36   10	   PRINT   PSHU   X
+  85A9 8D   2B			   BSR	PRIN1
+  85AB 37   20			   PULU   Y
+					 ***
+					 ***  ( TERPRI ) SUBR
+					 ***	  print crlf
+					 ***	  val <= NIL
+					 ***
+  85AD 86   0D	   TERPRI  LDA	#CR
+  85AF 8D   51			   BSR	OUT
+  85B1 86   0A			   LDA	#LF
+  85B3 20   4D			   BRA	OUT
+					 ***
+					 ***  ( LPRI e ) SUBR
+					 ***	  print e without top level "(" and ")"
+					 ***	  val <= NIL
+					 ***
+  85B5 8D   1F	   LPRI0   BSR	PRIN1
+  85B7 35   10			   PULS   X
+  85B9 AE   02			   LDX	2,X
+  85BB A6   84			   LDA	,X
+  85BD 2B   0A			   BMI	LPRI1
+  85BF 8D   E2			   BSR	BLANK
+  85C1 34   10	   LPRI	PSHS   X
+  85C3 AE   84			   LDX	,X
+  85C5 2A   EE			   BPL	LPRI0
+  85C7 35   10			   PULS   X
+  85C9 8C   0418	 LPRI1   CMPX   #NIL
+  85CC 27   D4			   BEQ	PRIRTS
+  85CE 8D   D3			   BSR	BLANK
+  85D0 86   2E			   LDA	#'.
+  85D2 8D   2E			   BSR	OUT
+  85D4 8D   CD			   BSR	BLANK
+					 ***
+					 ***  ( PRIN1 e ) SUBR
+					 ***	  print e
+					 ***	  val <= NIL
+					 ***
+  85D6			   PRIN1   TESTS
+  85DE 8C   8000			 CMPX   #CELBTM
+  85E1 24   BF			   BCC	PRIRTS
+  85E3 8C   0800			 CMPX   #CELTOP
+  85E6 24   08			   BCC	PRIN2
+  85E8 AE   84			   LDX	,X
+  85EA 2A   B6			   BPL	PRIRTS
+  85EC 30   07			   LEAX   7,X
+  85EE 20   92			   BRA	MSG
+					 *
+  85F0 1F   10	   PRIN2   TFR	X,D
+  85F2 C5   03			   BITB   #3
+  85F4 26   AC			   BNE	PRIRTS
+  85F6 A6   84			   LDA	,X
+  85F8 2B   0B			   BMI	PRINN
+  85FA 86   28			   LDA	#'(
+  85FC 8D   04			   BSR	OUT
+  85FE 8D   C1			   BSR	LPRI
+  8600 86   29			   LDA	#')
+					 *
+					 *  output a char in A
+					 *
+  8602 16   0BA0	 OUT	 LBRA   OUTPUT
+					 *
+					 *  print number ( decimal form )
+					 *
+  8605 86   D0	   PRINN   LDA	#-'0
+  8607 34   22			   PSHS   A,Y
+  8609 108E 8126			 LDY	#NY
+  860D 17   FBAE			 LBSR   NUMX
+  8610 2A   07			   BPL	PRINN1
+  8612 86   2D			   LDA	#'-
+  8614 8D   EC			   BSR	OUT
+  8616 17   FCDD			 LBSR   NNEG
+  8619 CC   000A	 PRINN1  LDD	#10
+  861C ED   22			   STD	2,Y
+  861E 5F					CLRB
+  861F ED   A4			   STD	,Y
+  8621 17   FC69			 LBSR   DIV
+  8624 A6   23			   LDA	3,Y
+  8626 34   02			   PSHS   A
+  8628 EC   02			   LDD	2,X
+  862A 26   ED			   BNE	PRINN1
+  862C EC   84			   LDD	,X
+  862E 26   E9			   BNE	PRINN1
+  8630 20   02			   BRA	PRINN3
+					 *
+  8632 8D   CE	   PRINN2  BSR	OUT
+  8634 35   02	   PRINN3  PULS   A
+  8636 8B   30			   ADDA   #'0
+  8638 26   F8			   BNE	PRINN2
+  863A 35   A0			   PULS   Y,PC
+					 ***
+					 ***  ( TYO num(8) ) SUBR
+					 ***	  output ASCII character
+					 ***	  val <= NIL
+					 ***
+  863C 17   FB7F	 TYO	 LBSR   NUMX
+  863F A6   03			   LDA	3,X
+  8641 20   BF			   BRA	OUT
+					 ***
+					 ***  ( PRINH n ) SUBR
+					 ***	  print number ( hex form )
+					 ***	  val <= NIL
+					 ***
+  8643 17   FB78	 PRINH   LBSR   NUMX
+  8646 86   24			   LDA	#'$
+  8648 8D   B8			   BSR	OUT
+  864A EC   84			   LDD	,X
+  864C 8D   02			   BSR	PRINH4
+  864E EC   02			   LDD	2,X
+  8650 8D   02	   PRINH4  BSR	PRINH2
+  8652 1F   98			   TFR	B,A
+  8654 34   02	   PRINH2  PSHS   A
+  8656 46					RORA
+  8657 46					RORA
+  8658 46					RORA
+  8659 46					RORA
+  865A 8D   02			   BSR	PRINH1
+  865C 35   02			   PULS   A
+  865E 84   0F	   PRINH1  ANDA   #$0F
+  8660 8B   30			   ADDA   #'0
+  8662 81   3A			   CMPA   #'9+1
+  8664 25   9C			   BCS	OUT
+  8666 8B   07			   ADDA   #7
+  8668 20   98			   BRA	OUT
+					 
+					 *--------------------------------------
+					 *
+					 *	  INPUT
+					 *
+					 *--------------------------------------
+					 ***
+					 ***  ( TYI ) SUBR
+					 ***	  read a char
+					 ***	  val <= ASCII code
+					 ***
+  866A 8D   6A	   TYI	 BSR	IN
+  866C 16   FDD1			 LBRA   MNAA
+					 ***
+					 ***  ( READCH ) SUBR
+					 ***	  read a char
+					 ***	  val <= symbolic atom
+					 ***
+  866F 8D   65	   READCH  BSR	IN
+  8671 16   024A			 LBRA   MSAA
+					 ***
+					 ***  ( GETCH ) SUBR
+					 ***	  read char, direct input
+					 ***	  val <= symbolic atom
+					 ***
+  8674 17   0B31	 GETCH   LBSR   INPUT
+  8677 16   0244			 LBRA   MSAA
+					 *
+					 *  read a line
+					 *
+  867A BE   A025	 GETLIN  LDX	prompt
+  867D 17   FF56			 LBSR   PRIN1
+  8680 8E   804E	 GETL1   LDX	#IBF
+  8683 BF   80B3			 STX	IBFP
+  8686 17   0B1F	 GETL2   LBSR   INPUT
+  8689 81   08			   CMPA   #BS
+  868B 27   17			   BEQ	GETL3
+  868D 81   18			   CMPA   #CAN
+  868F 27   1E			   BEQ	GETL5
+  8691 81   0D			   CMPA   #CR
+  8693 27   21			   BEQ	GETL6
+  8695 81   20			   CMPA   #' 
+  8697 25   ED			   BCS	GETL2
+  8699 A7   80			   STA	,X+
+  869B 8D   31			   BSR	EOUT
+  869D 8C   80B2			 CMPX   #IBF+IBFL
+  86A0 26   E4			   BNE	GETL2
+  86A2 20   37			   BRA	IN1
+					 *
+  86A4 8C   804E	 GETL3   CMPX   #IBF
+  86A7 27   DD			   BEQ	GETL2
+  86A9 8D   19			   BSR	EOUTBS
+  86AB 20   D9			   BRA	GETL2
+					 *
+  86AD 8D   15	   GETL4   BSR	EOUTBS
+  86AF 8C   804E	 GETL5   CMPX   #IBF
+  86B2 26   F9			   BNE	GETL4
+  86B4 20   D0			   BRA	GETL2
+					 *
+  86B6 A7   80	   GETL6   STA	,X+
+  86B8 6F   84			   CLR	,X
+  86BA 7D   8132			 TST	ECHOSW
+  86BD 26   1C			   BNE	IN1
+  86BF 17   FEEB			 LBSR   TERPRI
+  86C2 20   17			   BRA	IN1
+					 *
+					 * output back space
+					 *
+  86C4 30   1F	   EOUTBS  LEAX   -1,X
+  86C6 8D   04			   BSR	EOUTB1
+  86C8 86   20			   LDA	#' 
+  86CA 8D   02			   BSR	EOUT
+  86CC 86   08	   EOUTB1  LDA	#BS
+					 *
+					 *  output a char
+					 *
+  86CE 7D   8132	 EOUT	TST	ECHOSW
+  86D1 1027 FF2D			 LBEQ   OUT
+  86D5 39					RTS
+					 *
+					 *  read a char in A
+					 *
+  86D6 B6   8139	 IN	  LDA	OLDCHR
+  86D9 26   0A			   BNE	IN2
+  86DB BE   80B3	 IN1	 LDX	IBFP
+  86DE A6   80			   LDA	,X+
+  86E0 27   98			   BEQ	GETLIN
+  86E2 BF   80B3			 STX	IBFP
+  86E5 7F   8139	 IN2	 CLR	OLDCHR
+  86E8 39					RTS
+					 *
+					 *  skip blank ( cntr ) chars, char in A
+					 *
+  86E9 8D   EB	   SKIP0   BSR	IN
+  86EB 81   3B			   CMPA   #';
+  86ED 27   04			   BEQ	SKIP
+  86EF 81   0D			   CMPA   #CR
+  86F1 26   F6			   BNE	SKIP0
+  86F3 8D   E1	   SKIP	BSR	IN
+  86F5 81   21			   CMPA   #' +1
+  86F7 25   FA			   BCS	SKIP
+  86F9 81   3B			   CMPA   #';
+  86FB 27   EC			   BEQ	SKIP0
+  86FD 39					RTS
+					 ***
+					 ***  ( READ ) SUBR
+					 ***	  read a expression
+					 ***	  val <= expression
+					 ***
+  86FE			   READ	TESTS
+  8706					   TESTU
+  870E 17   012E			 LBSR   CLRABF
+  8711 8D   E0			   BSR	SKIP
+  8713 81   29			   CMPA   #')
+  8715 27   E7			   BEQ	READ
+  8717 81   5D			   CMPA   #']
+  8719 27   E3			   BEQ	READ
+  871B 81   28			   CMPA   #'(
+  871D 27   23			   BEQ	READR
+  871F 81   5B			   CMPA   #'[
+  8721 27   15			   BEQ	READG
+  8723 81   22			   CMPA   #'"
+  8725 1027 00F0			 LBEQ   READS
+  8729 81   27			   CMPA   #''
+  872B 26   49			   BNE	READA
+					 *
+					 *  read quate
+					 *
+  872D 8D   CF			   BSR	READ
+  872F 17   0940			 LBSR   CONSN
+  8732 8E   0692			 LDX	#QUOTE
+  8735 16   092B			 LBRA   CONS
+					 *
+					 *  read right part
+					 *
+  8738 8D   08	   READG   BSR	READR
+  873A B6   8139			 LDA	OLDCHR
+  873D 81   5D			   CMPA   #']
+  873F 27   A4			   BEQ	IN2
+  8741 39					RTS
+					 *
+  8742 8D   AF	   READR   BSR	SKIP
+  8744 108E 0418			 LDY	#NIL
+  8748 81   29			   CMPA   #')
+  874A 27   23			   BEQ	REDRTS
+  874C 81   5D			   CMPA   #']
+  874E 27   1C			   BEQ	READR3
+  8750 81   2E			   CMPA   #'.
+  8752 27   0C			   BEQ	READR1
+  8754 B7   8139			 STA	OLDCHR
+  8757 8D   A5			   BSR	READ
+  8759 36   20			   PSHU   Y
+  875B 8D   E5			   BSR	READR
+  875D 16   0905			 LBRA   CONSU
+					 *
+  8760 8D   9C	   READR1  BSR	READ
+  8762 8D   8F	   READR2  BSR	SKIP
+  8764 81   29			   CMPA   #')
+  8766 27   07			   BEQ	REDRTS
+  8768 81   5D			   CMPA   #']
+  876A 26   F6			   BNE	READR2
+  876C B7   8139	 READR3  STA	OLDCHR
+  876F 39			REDRTS  RTS
+					 *
+					 *  read atom
+					 *
+  8770 17   00D8	 READA0  LBSR   STOREA
+  8773 17   FF60			 LBSR   IN
+  8776 81   21	   READA   CMPA   #' +1
+  8778 25   10			   BCS	READA1
+  877A 81   28			   CMPA   #'(
+  877C 27   0C			   BEQ	READA1
+  877E 81   5B			   CMPA   #'[
+  8780 27   08			   BEQ	READA1
+  8782 81   29			   CMPA   #')
+  8784 27   04			   BEQ	READA1
+  8786 81   5D			   CMPA   #']
+  8788 26   E6			   BNE	READA0
+  878A B7   8139	 READA1  STA	OLDCHR
+					 *
+					 *  make atom ( input is number ??? )
+					 *
+  878D 8E   8122	 MATM	LDX	#NX
+  8790 CC   0000			 LDD	#0
+  8793 ED   02			   STD	2,X
+  8795 ED   84			   STD	,X
+  8797 7F   813A			 CLR	NSIGN
+  879A 108E 80B5			 LDY	#ABF
+  879E A6   A0			   LDA	,Y+
+  87A0 81   2B			   CMPA   #'+
+  87A2 27   07			   BEQ	MATM1
+  87A4 81   2D			   CMPA   #'-
+  87A6 26   05			   BNE	MATM2
+  87A8 7C   813A			 INC	NSIGN
+  87AB A6   A0	   MATM1   LDA	,Y+
+  87AD 81   24	   MATM2   CMPA   #'$
+  87AF 26   15			   BNE	MATM4
+					 *
+					 *  make hex number
+					 *
+  87B1 A6   A0			   LDA	,Y+
+  87B3 8D   27	   MATM3   BSR	TSTHEX
+  87B5 1024 010A			 LBCC   MSA
+  87B9 17   FB4B			 LBSR   NASL4
+  87BC AB   03			   ADDA   3,X
+  87BE A7   03			   STA	3,X
+  87C0 A6   A0			   LDA	,Y+
+  87C2 26   EF			   BNE	MATM3
+  87C4 20   0C			   BRA	MATM5
+					 *
+					 *  make decimal number
+					 *
+  87C6 8D   1F	   MATM4   BSR	TSTDEC
+  87C8 1024 00F7			 LBCC   MSA
+  87CC 8D   23			   BSR	N10A
+  87CE A6   A0			   LDA	,Y+
+  87D0 26   F4			   BNE	MATM4
+					 *
+  87D2 B6   813A	 MATM5   LDA	NSIGN
+  87D5 1027 FA15			 LBEQ   MNA
+  87D9 16   FA3B			 LBRA   MINUS1
+					 *
+					 *  char in ( 0..9, A..F ) ???
+					 *
+  87DC 81   41	   TSTHEX  CMPA   #'A
+  87DE 25   07			   BCS	TSTDEC
+  87E0 81   47			   CMPA   #'G
+  87E2 24   0C			   BCC	TSTRTS
+  87E4 8B   C9			   ADDA   #10-'A
+  87E6 39					RTS
+					 *
+					 *  char in ( 0..9 ) ???
+					 *
+  87E7 80   30	   TSTDEC  SUBA   #'0
+  87E9 25   03			   BCS	TSTCLC
+  87EB 81   0A			   CMPA   #10
+  87ED 39					RTS
+					 *
+  87EE 1C   FE	   TSTCLC  CLC
+  87F0 39			TSTRTS  RTS
+					 *
+					 *  NX <= NX * 10 + A
+					 *
+  87F1 36   02	   N10A	PSHU   A
+  87F3 8D   09			   BSR	N10
+  87F5 CC   0000			 LDD	#0
+  87F8 34   06			   PSHS   D
+  87FA 37   04			   PULU   B
+  87FC 20   0C			   BRA	N10A1
+					 *
+  87FE 17   FB0C	 N10	 LBSR   NASL
+  8801 EC   84			   LDD	,X
+  8803 34   06			   PSHS   D
+  8805 EC   02			   LDD	2,X
+  8807 17   FB01			 LBSR   NASL2
+  880A E3   02	   N10A1   ADDD   2,X
+  880C ED   02			   STD	2,X
+  880E 35   06			   PULS   D
+  8810 E9   01			   ADCB   1,X
+  8812 A9   84			   ADCA   ,X
+  8814 ED   84			   STD	,X
+  8816 39					RTS
+					 *
+					 *  read string
+					 *
+  8817 8D   32	   READS0  BSR	STOREA
+  8819 17   FEBA	 READS   LBSR   IN
+  881C 81   0D			   CMPA   #CR
+  881E 1027 00A1			 LBEQ   MSA
+  8822 81   22			   CMPA   #'"
+  8824 26   F1			   BNE	READS0
+  8826 17   FEAD			 LBSR   IN
+  8829 81   22			   CMPA   #'"
+  882B 27   EA			   BEQ	READS0
+  882D B7   8139			 STA	OLDCHR
+  8830 16   0090			 LBRA   MSA
+					 *
+					 *  compute string address
+					 *
+  8833 8C   0800	 STRING  CMPX   #CELTOP
+  8836 1024 FCE9			 LBCC   ERRSTR
+  883A AE   84			   LDX	,X
+  883C 30   07			   LEAX   7,X
+  883E 39					RTS
+					 *
+					 *  clear atom buffer
+					 *
+  883F 34   10	   CLRABF  PSHS   X
+  8841 8E   80B5			 LDX	#ABF
+  8844 BF   811A			 STX	ABFP
+  8847 6F   84			   CLR	,X
+  8849 35   90			   PULS   X,PC
+					 *
+					 *  store a char into Atom buffer
+					 *
+  884B 34   10	   STOREA  PSHS   X
+  884D BE   811A			 LDX	ABFP
+  8850 A7   80			   STA	,X+
+  8852 8C   8119			 CMPX   #ABF+ABFL
+  8855 27   05			   BEQ	STORE1
+  8857 BF   811A			 STX	ABFP
+  885A 6F   84			   CLR	,X
+  885C 35   90	   STORE1  PULS   X,PC
+					 *
+					 *  store chars into atom buffer
+					 *	X : POINTER
+					 *
+  885E 8D   EB	   STORE0  BSR	STOREA
+  8860 A6   80	   STORES  LDA	,X+
+  8862 26   FA			   BNE	STORE0
+  8864 39					RTS
+					 ***
+					 ***  ( IMPLODE list_of _atom ) SUBR
+					 ***	  val <= connected atom
+					 ***
+					 ***
+					 ***  ( CONCAT atom1 atoM2 ... ) LSUBR
+					 ***	  val <= connected atom
+					 ***
+			   8865  CONCAT  EQU	*
+  8865 8D   D8	   IMPLOD  BSR	CLRABF
+  8867 36   10	   IMPLD1  PSHU   X
+  8869 AE   84			   LDX	,X
+  886B 2B   0A			   BMI	IMPLD2
+  886D 8D   C4			   BSR	STRING
+  886F 8D   EF			   BSR	STORES
+  8871 37   10			   PULU   X
+  8873 AE   02			   LDX	2,X
+  8875 20   F0			   BRA	IMPLD1
+  8877 33   42	   IMPLD2  LEAU   2,U
+  8879 20   48			   BRA	MSA
+					 ***
+					 ***  ( EXPLODE atom ) SUBR
+					 ***	  val <= list of chars
+					 ***
+  887B CC   88BE	 EXPLOD  LDD	#MSAA
+  887E 20   03			   BRA	EXPL1
+					 ***
+					 ***  ( EXPLODEN atom ) SUBR
+					 ***	  val <= list of ascii codes
+					 ***
+  8880 CC   8440	 EXPLN   LDD	#MNAA
+  8883 FD   8130	 EXPL1   STD	OP
+  8886 8D   AB			   BSR	STRING
+  8888					   TESTU
+  8890					   TESTS
+  8898 A6   80	   EXPL2   LDA	,X+
+  889A 1027 0571			 LBEQ   FALSE
+  889E 34   10			   PSHS   X
+  88A0 AD   9F 8130		  JSR	[OP]
+  88A4 35   10			   PULS   X
+  88A6 36   20			   PSHU   Y
+  88A8 8D   EE			   BSR	EXPL2
+  88AA 16   07B8			 LBRA   CONSU
+					 ***
+					 *** ( ATOMCDR atom ) SUBR
+					 ***	  val <= butfirst chars of atom
+					 ***
+  88AD 8D   84	   ATOMCD  BSR	STRING
+  88AF 8D   8E			   BSR	CLRABF
+  88B1 A6   80			   LDA	,X+
+  88B3 27   0E			   BEQ	MSA
+  88B5 8D   A9			   BSR	STORES
+  88B7 20   0A			   BRA	MSA
+					 ***
+					 ***  ( ATOMCAR atom ) SUBR
+					 ***	  val <= first char of atom
+					 ***
+  88B9 17   FF77	 ATOMCA  LBSR   STRING
+  88BC A6   84			   LDA	,X
+					 *
+					 *  make single char atom (A )
+					 *
+  88BE 17   FF7E	 MSAA	LBSR   CLRABF
+  88C1 8D   88			   BSR	STOREA
+					 *
+					 *  make symbolic atom
+					 *
+  88C3 8E   80B5	 MSA	 LDX	#ABF
+  88C6 CC   0000			 LDD	#0
+  88C9 6D   84	   MSA1	TST	,X
+  88CB 27   0F			   BEQ	MSA2
+  88CD 44					LSRA
+  88CE 56					RORB
+  88CF 44					LSRA
+  88D0 56					RORB
+  88D1 44					LSRA
+  88D2 56					RORB
+  88D3 A8   80			   EORA   ,X+
+  88D5 20   F2			   BRA	MSA1
+					 *
+  88D7 35   06	   MSA4	PULS   D
+  88D9 C3   0002			 ADDD   #2
+  88DC 84   07	   MSA2	ANDA   #$07
+  88DE C4   FE			   ANDB   #$FE
+  88E0 C3   0000			 ADDD   #HSHTOP
+  88E3 34   06			   PSHS   D
+  88E5 108E 80B5			 LDY	#ABF
+  88E9 AE   F4			   LDX	[,S]
+  88EB 27   0D			   BEQ	MSA5
+  88ED 30   07			   LEAX   7,X
+  88EF A6   80	   MSA3	LDA	,X+
+  88F1 A1   A0			   CMPA   ,Y+
+  88F3 26   E2			   BNE	MSA4
+  88F5 4D					TSTA
+  88F6 26   F7			   BNE	MSA3
+  88F8 35   A0			   PULS   Y,PC
+					 *
+					 *  create new atom
+					 *
+  88FA 30   56	   MSA5	LEAX   -10,U
+  88FC 34   10			   PSHS   X
+  88FE BE   813D			 LDX	ATMEND
+  8901 CC   012A			 LDD	#UNDEFI
+  8904 ED   81			   STD	,X++
+  8906 CC   0418			 LDD	#NIL
+  8909 ED   81			   STD	,X++
+  890B CC   8535			 LDD	#ERRUND
+  890E ED   81			   STD	,X++
+  8910 6F   80			   CLR	,X+
+  8912 AC   E4	   MSA6	CMPX   ,S
+  8914 1024 FB99			 LBCC   ERRMSA
+  8918 A6   A0			   LDA	,Y+
+  891A A7   80			   STA	,X+
+  891C 26   F4			   BNE	MSA6
+  891E FC   813D			 LDD	ATMEND
+  8921 ED   F8 02			STD	[2,S]
+  8924 BF   813D			 STX	ATMEND
+  8927 30   88 1E			LEAX   30,X
+  892A BF   813F			 STX	USKTOP
+  892D					   TESTU
+  8935 35   A6			   PULS   D,Y,PC
+					 ***
+					 ***  ( ASCII n ) SUBR
+					 ***	  val <= syumbolic atom
+					 ***
+  8937 17   F884	 ASCII   LBSR   NUMX
+  893A A6   03			   LDA	3,X
+  893C 16   FF7F			 LBRA   MSAA
+					 ***
+					 ***  ( GENSYM [atom] ) SUBR
+					 ***	  generate symbolic atom
+					 ***	  val <= atom
+					 ***
+  893F 17   FEFD	 GENSYM  LBSR   CLRABF
+  8942 8C   0418			 CMPX   #NIL
+  8945 26   07			   BNE	GENSY0
+  8947 86   47			   LDA	#'G
+  8949 17   FEFF			 LBSR   STOREA
+  894C 20   06			   BRA	GENSY1
+  894E 17   FEE2	 GENSY0  LBSR   STRING
+  8951 17   FF0C			 LBSR   STORES
+  8954 8E   8120	 GENSY1  LDX	#GBUF+4
+  8957 6C   82	   GENSY2  INC	,-X
+  8959 A6   84			   LDA	,X
+  895B 81   3A			   CMPA   #'9+1
+  895D 26   06			   BNE	GENSY3
+  895F 86   30			   LDA	#'0
+  8961 A7   84			   STA	,X
+  8963 20   F2			   BRA	GENSY2
+  8965 8E   811C	 GENSY3  LDX	#GBUF
+  8968 17   FEF5			 LBSR   STORES
+  896B 16   FF55			 LBRA   MSA
+					 
+					 
+					 *--------------------------------------
+					 *
+					 *	  EVALUATION
+					 *
+					 *--------------------------------------
+					 *
+					 *	EVAL - FSUBR
+					 *
+  896E AE   02	   EVFSBR  LDX	2,X
+  8970 108E 0418			 LDY	#NIL
+  8974 39					RTS
+					 *
+					 *	EVAL - MACRO
+					 *
+  8975 10AE 02	   EVMACR  LDY	2,X
+  8978 35   10	   EVMAC1  PULS   X
+  897A 8D   66			   BSR	EVALL1
+  897C 30   A4			   LEAX   ,Y
+					 ***
+					 ***  ( EVAL e ) SUBR
+					 ***	  val <= value of e
+					 ***
+  897E			   EVAL	TESTS
+  8986					   TESTU
+  898E 10AE 84			   LDY	,X
+  8991 2A   11			   BPL	EVAL3
+  8993 8C   0800			 CMPX   #CELTOP
+  8996 24   04			   BCC	EVAL1
+  8998 10AE A4			   LDY	,Y
+  899B 39					RTS
+  899C 31   84	   EVAL1   LEAY   ,X
+  899E 39					RTS
+  899F 32   62	   EVAL2   LEAS   2,S
+  89A1 10AE A4			   LDY	,Y
+  89A4 108C 0800	 EVAL3   CMPY   #CELTOP
+  89A8 24   28			   BCC	EVALL
+  89AA 10AE A4			   LDY	,Y
+  89AD EC   24			   LDD	4,Y
+  89AF 34   06			   PSHS   D
+  89B1 A6   26			   LDA	6,Y
+  89B3 27   EA			   BEQ	EVAL2
+  89B5 81   01			   CMPA   #NSUBR
+  89B7 27   5B			   BEQ	EVSUBR
+  89B9 81   02			   CMPA   #NFSUBR
+  89BB 27   B1			   BEQ	EVFSBR
+  89BD 81   03			   CMPA   #NLSUBR
+  89BF 27   75			   BEQ	EVLSBR
+  89C1 81   09			   CMPA   #NEXPR
+  89C3 27   7A			   BEQ	EVEXPR
+  89C5 81   0A			   CMPA   #NFEXPR
+  89C7 1027 0082			 LBEQ   EVFEXP
+  89CB 81   0C			   CMPA   #NMACRO
+  89CD 27   A6			   BEQ	EVMACR
+  89CF 16   FB63	 EVAL9   LBRA   ERRUND
+					 *
+					 *	EVAL - LAMBDA
+					 *
+  89D2 36   20	   EVALL   PSHU   Y
+  89D4 EC   A4			   LDD	,Y
+  89D6 1083 00AA			 CMPD   #LAMBDA
+  89DA 26   F3			   BNE	EVAL9
+  89DC 8D   0A			   BSR	EVLIS
+  89DE 37   10			   PULU   X
+  89E0 AE   02	   EVALL2  LDX	2,X
+  89E2 34   10	   EVALL1  PSHS   X
+  89E4 AE   84			   LDX	,X
+  89E6 20   5B			   BRA	EVEXP2
+					 ***
+					 ***  ( EVLIS list ) SUBR
+					 ***	  evaluate each element of list
+					 ***	  val <= list of values
+					 ***
+  89E8 AE   02	   EVLIS   LDX	2,X
+  89EA 36   10			   PSHU   X
+  89EC AE   84			   LDX	,X
+  89EE 2B   21			   BMI	EVLIS1
+  89F0 8D   8C			   BSR	EVAL
+  89F2 AE   C4			   LDX	,U
+  89F4 10AF C4			   STY	,U
+  89F7 AE   02			   LDX	2,X
+  89F9 36   10			   PSHU   X
+  89FB AE   84			   LDX	,X
+  89FD 102B 0666			 LBMI   CONSUU
+  8A01 17   FF7A			 LBSR   EVAL
+  8A04 AE   C4			   LDX	,U
+  8A06 10AF C4			   STY	,U
+  8A09 8D   DD			   BSR	EVLIS
+  8A0B 17   0657			 LBSR   CONSU
+  8A0E 16   0654			 LBRA   CONSU
+  8A11 37   20	   EVLIS1  PULU   Y
+  8A13 39					RTS
+					 *
+					 *   EVAL - SUBR
+					 *
+  8A14 AE   02	   EVSUBR  LDX	2,X
+  8A16 36   10			   PSHU   X
+  8A18 AE   84			   LDX	,X
+  8A1A 2B   13			   BMI	EVSBR1
+  8A1C 17   FF5F			 LBSR   EVAL
+  8A1F AE   C4			   LDX	,U
+  8A21 10AF C4			   STY	,U
+  8A24 AE   98 02			LDX	[2,X]
+  8A27 2B   06			   BMI	EVSBR1
+  8A29 17   FF52			 LBSR   EVAL
+  8A2C 37   10			   PULU   X
+  8A2E 39					RTS
+  8A2F 37   10	   EVSBR1  PULU   X
+  8A31 108E 0418			 LDY	#NIL
+  8A35 39					RTS
+					 *
+					 *	EVAL - LSBUR
+					 *
+  8A36 8D   B0	   EVLSBR  BSR	EVLIS
+  8A38 30   A4	   EVLSB1  LEAX   ,Y
+  8A3A 108E 0418			 LDY	#NIL
+  8A3E 39					RTS
+					 *
+					 *	EVAL - EXPR
+					 *
+  8A3F 8D   A7	   EVEXPR  BSR	EVLIS
+  8A41 AE   F4	   EVEXP1  LDX	[,S]
+  8A43 2B   8A	   EVEXP2  BMI	EVAL9
+  8A45 8D   0B			   BSR	BIND
+  8A47 35   10			   PULS   X
+  8A49 8D   5C			   BSR	EVBODY
+  8A4B 20   50			   BRA	UNBIND
+					 *
+					 *	EVAL - FEXPR
+					 *
+  8A4D 10AE 02	   EVFEXP  LDY	2,X
+  8A50 20   EF			   BRA	EVEXP1
+					 *
+					 *  bind varables
+					 *	X : variable(s)
+					 *	Y : argument(s)
+					 *
+  8A52 CC   0418	 BIND	LDD	#NIL
+  8A55 36   06			   PSHU   D
+  8A57			   BIND1   TESTU
+  8A5F 34   30			   PSHS   X,Y
+  8A61 AE   84			   LDX	,X
+  8A63 2B   1C			   BMI	BINDA0
+  8A65 10AE A4			   LDY	,Y
+  8A68 2B   0B			   BMI	BIND2
+  8A6A 8D   17			   BSR	BINDA
+  8A6C 35   30			   PULS   X,Y
+  8A6E AE   02			   LDX	2,X
+  8A70 10AE 22			   LDY	2,Y
+  8A73 20   E2			   BRA	BIND1
+  8A75 108E 0418	 BIND2   LDY	#NIL
+  8A79 8D   08			   BSR	BINDA
+  8A7B 35   30			   PULS   X,Y
+  8A7D AE   02			   LDX	2,X
+  8A7F 20   D6			   BRA	BIND1
+					 *
+					 *  bind atom
+					 *
+  8A81 35   30	   BINDA0  PULS   X,Y
+  8A83 8C   0800	 BINDA   CMPX   #CELTOP
+  8A86 24   10			   BCC	BINRTS
+  8A88 8C   0418			 CMPX   #NIL
+  8A8B 27   0B			   BEQ	BINRTS
+  8A8D AE   84			   LDX	,X
+  8A8F EC   84			   LDD	,X
+  8A91 36   06			   PSHU   D
+  8A93 36   10			   PSHU   X
+  8A95 10AF 84			   STY	,X
+  8A98 39			BINRTS  RTS
+					 *
+					 *  unbind variables
+					 *
+  8A99 37   06	   UNBIN0  PULU   D
+  8A9B ED   84			   STD	,X
+  8A9D AE   C1	   UNBIND  LDX	,U++
+  8A9F 2B   F8			   BMI	UNBIN0
+  8AA1 39					RTS
+					 ***
+					 ***  ( EVBODY list ) SUBR
+					 ***	  evaluate each element of list
+					 ***	  val <= last element
+					 ***
+  8AA2 17   FED9	 EVBOD0  LBSR   EVAL
+  8AA5 37   10			   PULU   X
+  8AA7 AE   02	   EVBODY  LDX	2,X
+  8AA9 36   10			   PSHU   X
+  8AAB AE   84			   LDX	,X
+  8AAD 2A   F3			   BPL	EVBOD0
+  8AAF 37   10	   EVBOD1  PULU   X
+  8AB1 39					RTS
+					 ***
+					 ***  ( COND clause1 clause2 ... ) FSUBR
+					 ***	  val <= result or NIL
+					 ***
+  8AB2 37   10	   COND0   PULU   X
+  8AB4 AE   02			   LDX	2,X
+  8AB6 36   10	   COND	PSHU   X
+  8AB8 AE   84			   LDX	,X
+  8ABA 2B   F3			   BMI	EVBOD1
+  8ABC AE   84			   LDX	,X
+  8ABE 2B   F2			   BMI	COND0
+  8AC0 17   FEBB			 LBSR   EVAL
+  8AC3 108C 0418			 CMPY   #NIL
+  8AC7 27   E9			   BEQ	COND0
+  8AC9 AE   D1			   LDX	[,U++]
+  8ACB 20   DA			   BRA	EVBODY
+					 ***
+					 ***  ( MAPCAR fn list ) SUBR
+					 ***	  val <= list of values
+					 ***
+  8ACD 36   30	   MAPCAR  PSHU   X,Y
+  8ACF AE   A4			   LDX	,Y
+  8AD1 2B   15			   BMI	MAPCA1
+  8AD3 17   059E			 LBSR   CONSN1
+  8AD6 AE   C4			   LDX	,U
+  8AD8 8D   54			   BSR	APPLY
+  8ADA 1F   20			   TFR	Y,D
+  8ADC 37   30			   PULU   X,Y
+  8ADE 10AE 22			   LDY	2,Y
+  8AE1 36   06			   PSHU   D
+  8AE3 8D   E8			   BSR	MAPCAR
+  8AE5 16   057D			 LBRA   CONSU
+					 *
+  8AE8 37   30	   MAPCA1  PULU   X,Y
+  8AEA 39					RTS
+					 ***
+					 ***  ( MAPCAN fn list ) SUBR
+					 ***	  val <= appended list of values
+					 ***
+  8AEB 36   30	   MAPCAN  PSHU   X,Y
+  8AED AE   A4			   LDX	,Y
+  8AEF 2B   F7			   BMI	MAPCA1
+  8AF1 17   0580			 LBSR   CONSN1
+  8AF4 AE   C4			   LDX	,U
+  8AF6 8D   36			   BSR	APPLY
+  8AF8 1F   20			   TFR	Y,D
+  8AFA 37   30			   PULU   X,Y
+  8AFC 10AE 22			   LDY	2,Y
+  8AFF 36   06			   PSHU   D
+  8B01 8D   E8			   BSR	MAPCAN
+  8B03 37   10			   PULU   X
+  8B05 16   0472			 LBRA   APPXY
+					 ***
+					 ***  ( MAPC fn list ) SUBR
+					 ***	  val <= NIL
+					 ***
+  8B08 36   30	   MAPC	PSHU   X,Y
+  8B0A AE   A4	   MAPC1   LDX	,Y
+  8B0C 2B   DA			   BMI	MAPCA1
+  8B0E 17   0563			 LBSR   CONSN1
+  8B11 AE   C4			   LDX	,U
+  8B13 8D   19			   BSR	APPLY
+  8B15 10AE 42			   LDY	2,U
+  8B18 10AE 22			   LDY	2,Y
+  8B1B 10AF 42			   STY	2,U
+  8B1E 20   EA			   BRA	MAPC1
+					 ***
+					 ***  ( FUNCALL fn arg! ... ) LSUBR
+					 ***	  evaluate function
+					 ***	  val <= value of function
+					 ***
+  8B20 10AE 02	   FUNCALL LDY	2,X
+  8B23 AE   84			   LDX	,X
+  8B25 2A   07			   BPL	APPLY
+  8B27 16   F9A3			 LBRA   ERROR
+					 ***
+					 ***  ( APPLY fn list ) SUBR
+					 ***	  evaluate function, argument are list
+					 ***	  val <= value of function
+					 ***
+  8B2A 32   62	   APPLY0  LEAS   2,S
+  8B2C AE   84			   LDX	,X
+  8B2E			   APPLY   TESTS
+  8B36					   TESTU
+  8B3E 8C   0800			 CMPX   #CELTOP
+  8B41 24   46			   BCC	APPLYL
+  8B43 AE   84			   LDX	,X
+  8B45 EC   04			   LDD	4,X
+  8B47 34   06			   PSHS   D
+  8B49 A6   06			   LDA	6,X
+  8B4B 27   DD			   BEQ	APPLY0
+  8B4D 81   01			   CMPA   #NSUBR
+  8B4F 27   1F			   BEQ	APSUBR
+  8B51 81   02			   CMPA   #NFSUBR
+  8B53 1027 FEE1			 LBEQ   EVLSB1
+  8B57 81   03			   CMPA   #NLSUBR
+  8B59 1027 FEDB			 LBEQ   EVLSB1
+  8B5D 81   09			   CMPA   #NEXPR
+  8B5F 1027 FEDE			 LBEQ   EVEXP1
+  8B63 81   0A			   CMPA   #NFEXPR
+  8B65 1027 FED8			 LBEQ   EVEXP1
+  8B69 81   0C			   CMPA   #NMACRO
+  8B6B 27   16			   BEQ	APMACR
+  8B6D 16   F9C5			 LBRA   ERRUND
+					 *
+					 *	APPLY - SUBR
+					 *
+  8B70 AE   A4	   APSUBR  LDX	,Y
+  8B72 2B   07			   BMI	APSUB1
+  8B74 10AE B8 02			LDY	[2,Y]
+  8B78 2B   04			   BMI	APSUB2
+  8B7A 39					RTS
+  8B7B 8E   0418	 APSUB1  LDX	#NIL
+  8B7E 108E 0418	 APSUB2  LDY	#NIL
+  8B82 39					RTS
+					 *
+					 *	APPLY - MACRO
+					 *
+  8B83 17   04DD	 APMACR  LBSR   CONS
+  8B86 16   FDEF			 LBRA   EVMAC1
+					 *
+					 *	APPLY - LAMBDA
+					 *
+  8B89 EC   84	   APPLYL  LDD	,X
+  8B8B 1083 00AA			 CMPD   #LAMBDA
+  8B8F 1026 F9A2			 LBNE   ERRUND
+  8B93 16   FE4A			 LBRA   EVALL2
+					 
+					 
+					 *--------------------------------------
+					 *
+					 *	  PROPERTY
+					 *
+					 *--------------------------------------
+					 ***
+					 ***  ( DEFUN 'fn ['type] 'args 'body ) FSUBR
+					 ***	  define function
+					 ***	  val <= fn
+					 ***
+  8B96 10AE 84	   DEFUN   LDY	,X
+  8B99 AE   02			   LDX	2,X
+  8B9B EC   84			   LDD	,X
+  8B9D 1083 0142			 CMPD   #EXPR
+  8BA1 27   13			   BEQ	DE1
+  8BA3 1083 0146			 CMPD   #FEXPR
+  8BA7 27   27			   BEQ	DF1
+  8BA9 1083 0468			 CMPD   #MACRO
+  8BAD 27   28			   BEQ	DM1
+  8BAF 86   09			   LDA	#NEXPR
+  8BB1 20   07			   BRA	DE3
+					 ***
+					 ***  ( DE 'fn 'args 'body ) FSUBR
+					 ***	  define EXPR function
+					 ***	  val <= fn
+					 ***
+  8BB3 10AE 84	   DE	  LDY	,X
+  8BB6 86   09	   DE1	 LDA	#NEXPR
+  8BB8 AE   02	   DE2	 LDX	2,X
+  8BBA 108C 0800	 DE3	 CMPY   #CELTOP
+  8BBE 1024 F944			 LBCC   ERRDE
+  8BC2 34   20			   PSHS   Y
+  8BC4 10AE A4			   LDY	,Y
+  8BC7 A7   26			   STA	6,Y
+  8BC9 AF   24			   STX	4,Y
+  8BCB 35   A0			   PULS   Y,PC
+					 ***
+					 ***  ( DF 'fn 'args 'body ) FSUBR
+					 ***	  define FEXPR function
+					 ***	  val <= fn
+					 ***
+  8BCD 10AE 84	   DF	  LDY	,X
+  8BD0 86   0A	   DF1	 LDA	#NFEXPR
+  8BD2 20   E4			   BRA	DE2
+					 ***
+					 ***  ( DM 'fn 'args 'body ) FSUBR
+					 ***	  define MACRO function
+					 ***	  val <= fn
+					 ***
+  8BD4 10AE 84	   DM	  LDY	,X
+  8BD7 86   0C	   DM1	 LDA	#NMACRO
+  8BD9 20   DD			   BRA	DE2
+					 ***
+					 ***  ( SET atom value ) SUBR
+					 ***	  give value to symbolic atom
+					 ***	  val <= value
+					 ***
+  8BDB 8C   0800	 SET	 CMPX   #CELTOP
+  8BDE 24   3F			   BCC	SET9
+  8BE0 8C   0418			 CMPX   #NIL
+  8BE3 27   3A			   BEQ	SET9
+  8BE5 8C   0400			 CMPX   #T
+  8BE8 27   35			   BEQ	SET9
+  8BEA 10AF 94			   STY	[,X]
+  8BED 39					RTS
+					 ***
+					 ***  ( SETQ 'atom1 value1 ... ) FSUBR
+					 ***	  val <= last value
+					 ***
+  8BEE AE   98 02	SETQ0   LDX	[2,X]
+  8BF1 2B   2C			   BMI	SET9
+  8BF3 17   FD88			 LBSR   EVAL
+  8BF6 AE   D4			   LDX	[,U]
+  8BF8 8D   E1			   BSR	SET
+  8BFA 37   10			   PULU   X
+  8BFC AE   02			   LDX	2,X
+  8BFE AE   02			   LDX	2,X
+  8C00 36   10	   SETQ	PSHU   X
+  8C02 A6   84			   LDA	,X
+  8C04 2A   E8			   BPL	SETQ0
+  8C06 33   42	   SETQ1   LEAU   2,U
+  8C08 39					RTS
+					 ***
+					 ***  ( SETQQ 'atom1 'value1 ... ) FSUBR
+					 ***	  val <= last value
+					 ***
+  8C09 AE   84	   SETQQ0  LDX	,X
+  8C0B 8D   CE			   BSR	SET
+  8C0D 37   10			   PULU   X
+  8C0F AE   02			   LDX	2,X
+  8C11 AE   02			   LDX	2,X
+  8C13 36   10	   SETQQ   PSHU   X
+  8C15 A6   84			   LDA	,X
+  8C17 2B   ED			   BMI	SETQ1
+  8C19 10AE 98 02			LDY	[2,X]
+  8C1D 2A   EA			   BPL	SETQQ0
+  8C1F 16   F8D7	 SET9	LBRA   ERRSET
+					 ***
+					 ***  ( FVALUE atom ) SUBR
+					 ***	  val <= function values of atom ( list or number )
+					 ***
+  8C22 8C   0800	 FVALUE  CMPX   #CELTOP
+  8C25 1024 F8EA			 LBCC   ERRATM
+  8C29 AE   84			   LDX	,X
+  8C2B 10AE 04			   LDY	4,X
+  8C2E A6   06			   LDA	6,X
+  8C30 8E   0142			 LDX	#EXPR
+  8C33 81   09			   CMPA   #NEXPR
+  8C35 1025 F819			 LBCS   MNAY
+  8C39 27   0A			   BEQ	FVALU1
+  8C3B 8E   0146			 LDX	#FEXPR
+  8C3E 81   0A			   CMPA   #NFEXPR
+  8C40 27   03			   BEQ	FVALU1
+  8C42 8E   0468			 LDX	#MACRO
+  8C45 16   041B	 FVALU1  LBRA   CONS
+					 ***
+					 ***  ( PROPLIST atom ) SUBR
+					 ***	  val <= p-list of atom
+					 ***
+  8C48 8C   0800	 PROPLI  CMPX   #CELTOP
+  8C4B 1024 F8C4			 LBCC   ERRATM
+  8C4F AE   84			   LDX	,X
+  8C51 10AE 02			   LDY	2,X
+  8C54 39					RTS
+					 ***
+					 ***  ( GET atom ind ) SUBR
+					 ***	  get property of symbolic atom
+					 ***	  val <= property or NIL
+					 ***
+  8C55 8C   0800	 GET	 CMPX   #CELTOP
+  8C58 1024 F8B7			 LBCC   ERRATM
+  8C5C AE   84			   LDX	,X
+  8C5E AE   02			   LDX	2,X
+  8C60 1E   12			   EXG	X,Y
+  8C62 17   0235			 LBSR   ASSOC
+  8C65 108C 0418			 CMPY   #NIL
+  8C69 27   5F			   BEQ	ERMRTS
+  8C6B 10AE 22			   LDY	2,Y
+  8C6E 39					RTS
+					 ***
+					 ***  ( PUT atom ind e ) LSUBR
+					 ***	  add property
+					 ***	  val <= e
+					 ***
+  8C6F 10AE 84	   PUT	 LDY	,X
+  8C72 102B F8E6	 PUTERR  LBMI   ERRPUT
+  8C76 AE   02			   LDX	2,X
+  8C78 EC   84			   LDD	,X
+  8C7A 2B   F6			   BMI	PUTERR
+  8C7C AE   02			   LDX	2,X
+  8C7E AE   84			   LDX	,X
+  8C80 2B   F0			   BMI	PUTERR
+  8C82 108C 0800			 CMPY   #CELTOP
+  8C86 1024 F889			 LBCC   ERRATM
+  8C8A 10AE A4			   LDY	,Y
+  8C8D 31   22			   LEAY   2,Y
+  8C8F 34   30			   PSHS   X,Y
+  8C91 10AE A4			   LDY	,Y
+  8C94 1F   01			   TFR	D,X
+  8C96 17   0201			 LBSR   ASSOC
+  8C99 108C 0418			 CMPY   #NIL
+  8C9D 27   08			   BEQ	PUT1
+  8C9F 35   10			   PULS   X
+  8CA1 AF   22			   STX	2,Y
+  8CA3 31   84			   LEAY   ,X
+  8CA5 35   86			   PULS   D,PC
+					 *
+  8CA7 10AE E4	   PUT1	LDY	,S
+  8CAA 17   03B6			 LBSR   CONS
+  8CAD 30   A4			   LEAX   ,Y
+  8CAF 10AE F8 02			LDY	[2,S]
+  8CB3 17   03AD			 LBSR   CONS
+  8CB6 10AF F8 02			STY	[2,S]
+  8CBA 10AE E4			   LDY	,S
+  8CBD 35   96			   PULS   D,X,PC
+					 ***
+					 ***  ( CARMODE e ) SUBR
+					 ***	  if e = NIL then disable (CAR atom)
+					 ***				 else enable
+					 ***	  val <= NIL
+					 ***
+  8CBF 7F   8133	 CARMOD  CLR	CARSW
+  8CC2 8C   0418			 CMPX   #NIL
+  8CC5 26   03			   BNE	ERMRTS
+  8CC7 7C   8133			 INC	CARSW
+  8CCA 39			ERMRTS  RTS
+					 ***
+					 ***  ( GBCMODE e ) SUBR
+					 ***	  if e = NIL then disable message
+					 ***				 else enable
+					 ***	  val <= NIL
+					 ***
+  8CCB 7F   8134	 GBCMODE CLR	GBCSW
+  8CCE 8C   0418			 CMPX   #NIL
+  8CD1 27   F7			   BEQ	ERMRTS
+  8CD3 7C   8134			 INC	GBCSW
+  8CD6 39					RTS
+					 ***
+					 ***  ( ECHOMODE e ) SUBR
+					 ***	  if e = NIL then disable echoback
+					 ***				 else enable
+					 ***	  val <= NIL
+					 ***
+  8CD7 7F   8132	 ECHOMO  CLR	ECHOSW
+  8CDA 8C   0418			 CMPX   #NIL
+  8CDD 26   EB			   BNE	ERMRTS
+  8CDF 7C   8132			 INC	ECHOSW
+  8CE2 39					RTS
+					 
+					 
+					 *--------------------------------------
+					 *
+					 *	  PROG AND LOOP
+					 *
+					 *--------------------------------------
+					 ***
+					 ***  ( PROG 'args 'body ) FSUBR
+					 ***	  val <= value of RETURN or NIL
+					 ***
+  8CE3 34   10	   PROG	PSHS   X
+  8CE5 AE   84			   LDX	,X
+  8CE7 102B F814	 PROG9   LBMI   ERRPRG
+  8CEB 17   FD64			 LBSR   BIND
+  8CEE 35   10			   PULS   X
+  8CF0 36   10			   PSHU   X
+  8CF2 8D   20			   BSR	PROGS
+  8CF4 7F   8136	 PRG1	CLR	RTNSW
+  8CF7 33   42			   LEAU   2,U
+  8CF9 16   FDA1			 LBRA   UNBIND
+					 ***
+					 ***  ( LOOP 'args 'body ) FSUBR
+					 ***	  val <= value of RETURN
+					 ***
+  8CFC 34   10	   LOOP	PSHS   X
+  8CFE AE   84			   LDX	,X
+  8D00 2B   E5			   BMI	PROG9
+  8D02 17   FD4D			 LBSR   BIND
+  8D05 35   10			   PULS   X
+  8D07 36   10			   PSHU   X
+  8D09 AE   C4	   LOOP1   LDX	,U
+  8D0B 8D   07			   BSR	PROGS
+  8D0D B6   8136			 LDA	RTNSW
+  8D10 27   F7			   BEQ	LOOP1
+  8D12 20   E0			   BRA	PRG1
+					 *
+					 *
+					 *
+  8D14 AE   02	   PROGS   LDX	2,X
+  8D16 36   10			   PSHU   X
+  8D18 AE   84			   LDX	,X
+  8D1A 2B   21			   BMI	PROGS2
+  8D1C 17   FC5F			 LBSR   EVAL
+  8D1F 37   10			   PULU   X
+  8D21 B6   8136			 LDA	RTNSW
+  8D24 26   19			   BNE	PRGRTS
+  8D26 B6   8135			 LDA	GOSW
+  8D29 27   E9			   BEQ	PROGS
+  8D2B 7F   8135			 CLR	GOSW
+  8D2E AE   C4			   LDX	,U
+  8D30 AE   02	   PROGS1  LDX	2,X
+  8D32 A6   84			   LDA	,X
+  8D34 2B   B1			   BMI	PROG9
+  8D36 10AC 84			   CMPY   ,X
+  8D39 26   F5			   BNE	PROGS1
+  8D3B 20   D7			   BRA	PROGS
+  8D3D 37   20	   PROGS2  PULU   Y
+  8D3F 39			PRGRTS  RTS
+					 ***
+					 ***  ( GO 'label ) FSUBR
+					 ***	  val <= label
+					 ***
+  8D40 7C   8135	 GO	  INC	GOSW
+  8D43 10AE 84			   LDY	,X
+  8D46 2B   9F			   BMI	PROG9
+  8D48 39					RTS
+					 ***
+					 ***  ( RETURN value ) SUBR
+					 ***	  val <= value
+					 ***
+  8D49 7C   8136	 RETURN  INC	RTNSW
+  8D4C 31   84			   LEAY   ,X
+  8D4E 39					RTS
+					 ***
+					 ***  ( PROGN e1 e2 ... ) LSUBR
+					 ***	  val <= last e
+					 ***
+  8D4F 10AE 84	   PROGN0  LDY	,X
+  8D52 AE   02			   LDX	2,X
+  8D54 A6   84	   PROGN   LDA	,X
+  8D56 2A   F7			   BPL	PROGN0
+  8D58 39					RTS
+					 ***
+					 ***  ( PROG1 e1 e2 ... ) LSUBR
+					 ***	  val <= e1
+					 ***
+			   8EE2  PROG1   EQU	CAR
+					 ***
+					 ***  ( PROG2 e1 e2 ... ) LSUBR
+					 ***	  val <= e2
+					 ***
+			   8EE0  PROG2   EQU	CADR
+					 ***
+					 ***  ( CATCH e1 'tag ) FSUBR
+					 ***	  val <= value of e1 or THROWed value
+					 ***
+  8D59 34   40	   CATCH   PSHS   U
+  8D5B 36   10			   PSHU   X
+  8D5D 30   E4			   LEAX   ,S
+  8D5F 17   F6F2			 LBSR   MNAX
+  8D62 30   A4			   LEAX   ,Y
+  8D64 10BE 8137			 LDY	CATCHL
+  8D68 17   02F8			 LBSR   CONS
+  8D6B AE   C4			   LDX	,U
+  8D6D A6   84			   LDA	,X
+  8D6F 2B   37			   BMI	CATERR
+  8D71 AE   98 02			LDX	[2,X]
+  8D74 2B   32			   BMI	CATERR
+  8D76 17   02EA			 LBSR   CONS
+  8D79 10BF 8137			 STY	CATCHL
+  8D7D AE   D1			   LDX	[,U++]
+  8D7F 17   FBFC			 LBSR   EVAL
+  8D82 BE   8137			 LDX	CATCHL
+  8D85 AE   02			   LDX	2,X
+  8D87 AE   02			   LDX	2,X
+  8D89 BF   8137			 STX	CATCHL
+  8D8C 35   C0	   CATCH1  PULS   U,PC
+					 ***
+					 ***  ( THROW value 'tag ) FSUBR
+					 ***	  val <= value
+					 ***
+  8D8E 36   10	   THROW   PSHU   X
+  8D90 AE   84			   LDX	,X
+  8D92 2B   14			   BMI	CATERR
+  8D94 17   FBE7			 LBSR   EVAL
+  8D97 AE   C4			   LDX	,U
+  8D99 10AF C4			   STY	,U
+  8D9C AE   98 02			LDX	[2,X]
+  8D9F 2B   07			   BMI	CATERR
+  8DA1 10BE 8137			 LDY	CATCHL
+  8DA5 17   00E1			 LBSR   MEMBER
+  8DA8 1026 F725	 CATERR  LBNE   ERRCAT
+  8DAC AE   22			   LDX	2,Y
+  8DAE 10AE 02			   LDY	2,X
+  8DB1 10BF 8137			 STY	CATCHL
+  8DB5 AE   84			   LDX	,X
+  8DB7 32   98 02			LEAS   [2,X]
+  8DBA 37   20			   PULU   Y
+  8DBC 11A3 E4	   THROW1  CMPU   ,S
+  8DBF 27   CB			   BEQ	CATCH1
+  8DC1 17   FCD9			 LBSR   UNBIND
+  8DC4 20   F6			   BRA	THROW1
+					 
+					 
+					 *--------------------------------------
+					 *
+					 *	  PREDICATES
+					 *
+					 *--------------------------------------
+					 ***
+					 ***  ( ALPHORDER atom1 atom2 ) SUBR
+					 ***	  val <= T or NIL
+					 ***
+  8DC6 17   FA6A	 ALPHOR  LBSR   STRING
+  8DC9 1E   12			   EXG	X,Y
+  8DCB 17   FA65			 LBSR   STRING
+  8DCE A6   80	   ALPHO1  LDA	,X+
+  8DD0 A1   A0			   CMPA   ,Y+
+  8DD2 25   3B			   BCS	FALSE
+  8DD4 26   2F			   BNE	TRUE
+  8DD6 4D					TSTA
+  8DD7 26   F5			   BNE	ALPHO1
+  8DD9 20   2A			   BRA	TRUE
+					 ***
+					 ***  ( GREATERP n1 n2 ) SUBR
+					 ***	  n1 > n2 ???
+					 ***	  val <= T or NIL
+					 ***
+  8DDB 1E   12	   GREATE  EXG	X,Y
+					 ***
+					 ***  ( LESSP n1 n2 ) SUBR
+					 ***	  n1 < n2 ???
+					 ***	  val <= T or NIL
+					 ***
+  8DDD 17   F3DC	 LESSP   LBSR   NUMXY
+  8DE0 17   F5BA			 LBSR   NCMP
+  8DE3 2C   2A			   BGE	FALSE
+  8DE5 20   1E			   BRA	TRUE
+					 ***
+					 ***  ( SYMBOLP e ) SUBR
+					 ***	  e is symbol ???
+					 ***	  val <= T or NIL
+					 ***
+  8DE7 8C   0800	 SYMBOL  CMPX   #CELTOP
+  8DEA 24   23			   BCC	FALSE
+  8DEC 20   17			   BRA	TRUE
+					 ***
+					 ***  ( NUMBERP e ) SUBR
+					 ***	  e is number ???
+					 ***	  val <= T or NIL
+					 ***+
+  8DEE 8C   0800	 NUMBER  CMPX   #CELTOP
+  8DF1 25   1C			   BCS	FALSE
+					 ***
+					 ***  ( ATOM e ) SUBR
+					 ***	  e is atom ???
+					 ***	  val <= T or NIL
+					 ***
+  8DF3 A6   84	   ATOM	LDA	,X
+  8DF5 2A   18			   BPL	FALSE
+  8DF7 20   0C			   BRA	TRUE
+					 ***
+					 ***  ( LSITP e ) SUBR
+					 ***	  e Is list ???
+					 ***	  val <= T or NIL
+					 ***
+  8DF9 A6   84	   LISTP   LDA	,X
+  8DFB 2A   08			   BPL	TRUE
+  8DFD 20   10			   BRA	FALSE
+					 ***
+					 ***  ( EQ e1 e2 ) SUBR
+					 ***	  e1 = e2 ???
+					 ***	  val <= T or NIL
+					 ***
+  8DFF 36   20	   EQ	  PSHU   Y
+  8E01 AC   C1			   CMPX   ,U++
+  8E03 26   0A			   BNE	FALSE
+  8E05 108E 0400	 TRUE	LDY	#T
+  8E09 39					RTS
+					 ***
+					 ***  ( NULL e ) SUBR
+					 ***  ( NOT e ) SUBR
+					 ***	  e is NIL ???
+					 ***	  val <= T or NIL
+					 ***
+			   8E0A  NULL	EQU	*
+  8E0A 8C   0418	 NOT	 CMPX   #NIL
+  8E0D 27   F6			   BEQ	TRUE
+  8E0F 108E 0418	 FALSE   LDY	#NIL
+  8E13 39					RTS
+					 ***
+					 ***  ( PLUSP e ) SUBR
+					 ***	  e >= 0 ???
+					 ***	  val <= T or NIL
+					 ***
+  8E14 8C   0800	 PLUSP   CMPX   #CELTOP
+  8E17 25   F6			   BCS	FALSE
+  8E19 A6   84			   LDA	,X
+  8E1B 2A   F2			   BPL	FALSE
+  8E1D 85   40			   BITA   #$40
+  8E1F 27   E4			   BEQ	TRUE
+  8E21 20   EC			   BRA	FALSE
+					 ***
+					 ***  ( MINUSP e ) SUBR
+					 ***	  e < 0 ???
+					 ***	  val <= T or NIL
+					 ***
+  8E23 8C   0800	 MINUSP  CMPX   #CELTOP
+  8E26 25   E7			   BCS	FALSE
+  8E28 A6   84			   LDA	,X
+  8E2A 2A   E3			   BPL	FALSE
+  8E2C 85   40			   BITA   #$40
+  8E2E 26   D5			   BNE	TRUE
+  8E30 20   DD			   BRA	FALSE
+					 ***
+					 ***  ( oneP e ) SUBR
+					 ***	  e = 1 ???
+					 ***
+  8E32 EC   02	   ONEP	LDD	2,X
+  8E34 1083 0001			 CMPD   #1
+  8E38 26   D5	   ONEP1   BNE	FALSE
+  8E3A 8C   0800			 CMPX   #CELTOP
+  8E3D 25   D0			   BCS	FALSE
+  8E3F EC   84			   LDD	,X
+  8E41 1083 8000			 CMPD   #$8000
+  8E45 27   BE			   BEQ	TRUE
+  8E47 20   C6			   BRA	FALSE
+					 ***
+					 ***  ( ZEROP e ) SUBR
+					 ***	  e = 0 ???
+					 ***	  val <= T or NIL
+					 ***
+  8E49 EC   02	   ZEROP   LDD	2,X
+  8E4B 20   EB			   BRA	ONEP1
+					 ***
+					 ***  ( EQUAL e1 e2 ) SUBR
+					 ***	  compare e1 with e2
+					 ***	  val <= T or NIL
+					 ***	  zero flag is set ( T )
+					 ***
+  8E4D			   EQUAL0  TESTS
+  8E55 8D   09			   BSR	EQUAL
+  8E57 26   16			   BNE	EQUAL2
+  8E59 35   30			   PULS   X,Y
+  8E5B AE   02			   LDX	2,X
+  8E5D 10AE 22			   LDY	2,Y
+  8E60 34   30	   EQUAL   PSHS   X,Y
+  8E62 AE   84			   LDX	,X
+  8E64 2B   0C			   BMI	EQUAL3
+  8E66 10AE A4			   LDY	,Y
+  8E69 2A   E2			   BPL	EQUAL0
+  8E6B 108E 0418	 EQUAL1  LDY	#NIL
+  8E6F 32   64	   EQUAL2  LEAS   4,S
+  8E71 39					RTS
+					 *
+  8E72 AC   A4	   EQUAL3  CMPX   ,Y
+  8E74 26   F5			   BNE	EQUAL1
+  8E76 AE   E4			   LDX	,S
+  8E78 AE   02			   LDX	2,X
+  8E7A AC   22			   CMPX   2,Y
+  8E7C 26   ED			   BNE	EQUAL1
+  8E7E 108E 0400			 LDY	#T
+  8E82 4F					CLRA
+  8E83 32   64			   LEAS   4,S
+  8E85 39					RTS
+					 ***
+					 ***  ( MEMBER e list ) SUBR
+					 ***	  e is top listevel element of 1 ???
+					 ***	  val <= sublist or NIL
+					 ***
+  8E86 10AE 22	   MEMBE0  LDY	2,Y
+  8E89 34   30	   MEMBER  PSHS   X,Y
+  8E8B 10AE A4			   LDY	,Y
+  8E8E 2B   DB			   BMI	EQUAL1
+  8E90 8D   CE			   BSR	EQUAL
+  8E92 35   30			   PULS   X,Y
+  8E94 26   F0			   BNE	MEMBE0
+  8E96 39					RTS
+					 ***
+					 ***  ( ASSOC e a-list ) SUBR
+					 ***	  search e
+					 ***	  val <= element or NIL
+					 ***
+  8E97 10AE 22	   ASSOC0  LDY	2,Y
+  8E9A 34   30	   ASSOC   PSHS   X,Y
+  8E9C 10AE A4			   LDY	,Y
+  8E9F 2B   CA			   BMI	EQUAL1
+  8EA1 10AE A4			   LDY	,Y
+  8EA4 2B   02			   BMI	ASSOC1
+  8EA6 8D   B8			   BSR	EQUAL
+  8EA8 35   30	   ASSOC1  PULS   X,Y
+  8EAA 26   EB			   BNE	ASSOC0
+  8EAC 10AE A4			   LDY	,Y
+  8EAF 39					RTS
+					 ***
+					 ***  ( MEMQ obj list ) SUBR
+					 ***	  obj is top level element of list ???
+					 ***	  ( uses EQ instead of EQUAL )
+					 ***	  val <= sublist or NIL
+					 ***
+  8EB0 10AE 22	   MEMQ0   LDY	2,Y
+  8EB3 AC   A4	   MEMQ	CMPX   ,Y
+  8EB5 27   04			   BEQ	MEMRTS
+  8EB7 A6   A4			   LDA	,Y
+  8EB9 2A   F5			   BPL	MEMQ0
+  8EBB 39			MEMRTS  RTS
+					 ***
+					 ***  ( ASSQ obj a-list ) SUBR
+					 ***	  search obj
+					 ***	  ( uses EQ instead of EQUAL )
+					 ***	  val <= element or NIL
+					 ***
+  8EBC 35   20	   ASSQ0   PULS   Y
+  8EBE 10AE 22			   LDY	2,Y
+  8EC1 34   20	   ASSQ	PSHS   Y
+  8EC3 10AE A4			   LDY	,Y
+  8EC6 2B   06			   BMI	ASSQ1
+  8EC8 AC   A4			   CMPX   ,Y
+  8ECA 26   F0			   BNE	ASSQ0
+  8ECC 35   90			   PULS   X,PC
+  8ECE 35   A0	   ASSQ1   PULS   Y,PC
+					 
+					 
+					 *--------------------------------------
+					 *
+					 *	  LIST FUNCTIONS
+					 *
+					 *--------------------------------------
+					 ***
+					 ***  ( C..R e ) SUBR
+					 ***  ( C..R e )  "
+					 ***  ( CAR e )   "
+					 ***  ( CDR e )   "
+					 ***
+  8ED0 8D   22	   CAAAR   BSR	CARX
+  8ED2 20   02			   BRA	CAAR
+  8ED4 8D   23	   CAADR   BSR	CDRX
+  8ED6 8D   1C	   CAAR	BSR	CARX
+  8ED8 20   08			   BRA	CAR
+  8EDA 8D   18	   CADAR   BSR	CARX
+  8EDC 20   02			   BRA	CADR
+  8EDE 8D   19	   CADDR   BSR	CDRX
+  8EE0 8D   17	   CADR	BSR	CDRX
+  8EE2 10AE 84	   CAR	 LDY	,X
+  8EE5 2A   11			   BPL	CARRTS
+  8EE7 B6   8133	 CARERR  LDA	CARSW
+  8EEA 1026 F5F6			 LBNE   ERRCAR
+  8EEE 8E   0418			 LDX	#NIL
+  8EF1 31   84			   LEAY   ,X
+  8EF3 39					RTS
+					 *
+  8EF4 AE   84	   CARX	LDX	,X
+  8EF6 2B   EF			   BMI	CARERR
+  8EF8 39			CARRTS  RTS
+					 *
+  8EF9 A6   84	   CDRX	LDA	,X
+  8EFB 2B   EA			   BMI	CARERR
+  8EFD AE   02			   LDX	2,X
+  8EFF 39					RTS
+					 *
+  8F00 8D   F2	   CDAAR   BSR	CARX
+  8F02 20   02			   BRA	CDAR
+  8F04 8D   F3	   CDADR   BSR	CDRX
+  8F06 8D   EC	   CDAR	BSR	CARX
+  8F08 20   08			   BRA	CDR
+  8F0A 8D   E8	   CDDAR   BSR	CARX
+  8F0C 20   02			   BRA	CDDR
+  8F0E 8D   E9	   CDDDR   BSR	CDRX
+  8F10 8D   E7	   CDDR	BSR	CDRX
+  8F12 A6   84	   CDR	 LDA	,X
+  8F14 2B   D1			   BMI	CARERR
+  8F16 10AE 02			   LDY	2,X
+  8F19 39					RTS
+					 ***
+					 ***  ( LAST list ) SUBR
+					 ***	  val <= list of last element of list
+					 ***
+  8F1A 31   84	   LAST0   LEAY   ,X
+  8F1C AE   02			   LDX	2,X
+  8F1E A6   84	   LAST	LDA	,X
+  8F20 2A   F8			   BPL	LAST0
+  8F22 39					RTS
+					 ***
+					 ***  ( REVERSE list ) SUBR
+					 ***	  val <= reversed list
+					 ***
+  8F23 17   013D	 REVER0  LBSR   CONS
+  8F26 37   10			   PULU   X
+  8F28 AE   02			   LDX	2,X
+  8F2A 36   10	   REVERS  PSHU   X
+  8F2C AE   84			   LDX	,X
+  8F2E 2A   F3			   BPL	REVER0
+  8F30 33   42			   LEAU   2,U
+  8F32 39					RTS
+					 ***
+					 ***  ( COPY e ) SUBR
+					 ***	  val <= copy of e
+					 ***
+  8F33			   COPY	TESTS
+  8F3B					   TESTU
+  8F43 36   10			   PSHU   X
+  8F45 AE   84			   LDX	,X
+  8F47 2B   0E			   BMI	COPY1
+  8F49 8D   E8			   BSR	COPY
+  8F4B AE   C4			   LDX	,U
+  8F4D 10AF C4			   STY	,U
+  8F50 AE   02			   LDX	2,X
+  8F52 8D   DF			   BSR	COPY
+  8F54 16   010E			 LBRA   CONSU
+  8F57 37   20	   COPY1   PULU   Y
+  8F59 39			CPYRTS  RTS
+					 ***
+					 ***  ( APPEND 11 12 ... ) LSUBR
+					 ***	  val <= connected list
+					 ***
+  8F5A EC   84	   APPEND  LDD	,X
+  8F5C 2B   FB			   BMI	CPYRTS
+  8F5E 36   06	   APPEN1  PSHU   D
+  8F60 AE   02			   LDX	2,X
+  8F62 EC   84			   LDD	,X
+  8F64 2B   F1			   BMI	COPY1
+  8F66					   TESTU
+  8F6E					   TESTS
+  8F76 8D   E6			   BSR	APPEN1
+  8F78 37   10			   PULU   X
+					 *
+					 *  append X to Y
+					 *
+  8F7A EC   84	   APPXY   LDD	,X
+  8F7C 2B   DB			   BMI	CPYRTS
+  8F7E 36   06			   PSHU   D
+  8F80 AE   02			   LDX	2,X
+  8F82					   TESTS
+  8F8A					   TESTU
+  8F92 8D   E6			   BSR	APPXY
+  8F94 16   00CE			 LBRA   CONSU
+					 ***
+					 ***  ( NCONC 11 12 ... ) LSUBR
+					 ***	  val <= append list, use RPLACD
+					 ***
+  8F97 EC   84	   NCONC   LDD	,X
+  8F99 2B   BE			   BMI	CPYRTS
+  8F9B 34   06	   NCONC1  PSHS   D
+  8F9D AE   02			   LDX	2,X
+  8F9F EC   84			   LDD	,X
+  8FA1 2B   1C			   BMI	NCONC4
+  8FA3					   TESTS
+  8FAB 8D   EE			   BSR	NCONC1
+  8FAD AE   E4			   LDX	,S
+  8FAF A6   84			   LDA	,X
+  8FB1 2B   0E			   BMI	NCONC5
+  8FB3 A6   98 02	NCONC2  LDA	[2,X]
+  8FB6 2B   04			   BMI	NCONC3
+  8FB8 AE   02			   LDX	2,X
+  8FBA 20   F7			   BRA	NCONC2
+  8FBC 10AF 02	   NCONC3  STY	2,X
+  8FBF 35   A0	   NCONC4  PULS   Y,PC
+  8FC1 35   86	   NCONC5  PULS   D,PC
+					 ***
+					 ***  ( AND 'e1 'e2 ... ) FSUBR
+					 ***	  search NIL
+					 ***	  val <= NIL or last e
+					 ***
+  8FC3 108E 0400	 AND	 LDY	#T
+  8FC7 36   10	   AND1	PSHU   X
+  8FC9 AE   84			   LDX	,X
+  8FCB 2B   22			   BMI	OR1
+  8FCD 17   F9AE			 LBSR   EVAL
+  8FD0 108C 0418			 CMPY   #NIL
+  8FD4 27   19			   BEQ	OR1
+  8FD6 37   10			   PULU   X
+  8FD8 AE   02			   LDX	2,X
+  8FDA 20   EB			   BRA	AND1
+					 ***
+					 ***  ( OR 'e1 'e2 ... ) FSUBR
+					 ***	  search non-NIL
+					 ***	  val <= non-NIL or NIL
+					 ***
+  8FDC 17   F99F	 OR0	 LBSR   EVAL
+  8FDF 108C 0418			 CMPY   #NIL
+  8FE3 26   0A			   BNE	OR1
+  8FE5 37   10			   PULU   X
+  8FE7 AE   02			   LDX	2,X
+  8FE9 36   10	   OR	  PSHU   X
+  8FEB AE   84			   LDX	,X
+  8FED 2A   ED			   BPL	OR0
+  8FEF 33   42	   OR1	 LEAU   2,U
+  8FF1 39					RTS
+					 ***
+					 ***  ( RPLACA l e ) SUBR
+					 ***	  replace car of l with e
+					 ***	  val <= 1
+					 ***
+  8FF2 A6   84	   RPLACA  LDA	,X
+  8FF4 102B F4D5			 LBMI   ERROR
+  8FF8 10AF 84			   STY	,X
+  8FFB 31   84			   LEAY   ,X
+  8FFD 39					RTS
+					 ***
+					 ***  ( RPLACD l e ) SUBR
+					 ***	  replace cdr of l with e
+					 ***	  val <= l
+					 ***
+  8FFE A6   84	   RPLACD  LDA	,X
+  9000 102B F4C9			 LBMI   ERROR
+  9004 10AF 02			   STY	2,X
+  9007 31   84			   LEAY   ,X
+  9009 39					RTS
+					 ***
+					 ***  ( LIST e1 e2 ... ) LSUBR
+					 ***	  val <= list of e1 ...
+					 ***
+			   899C  LIST	EQU	EVAL1
+					 ***
+					 ***  ( DBLIST ) SUBR
+					 ***	  val <= list of atoms
+					 ***
+  900A 108E 0418	 OBLIST  LDY	#NIL
+  900E 8E   0000			 LDX	#HSHTOP
+  9011 34   10	   OBLIS1  PSHS   X
+  9013 EC   84			   LDD	,X
+  9015 27   03			   BEQ	OBLIS2
+ >9017 17   0049			 LBSR   CONS
+  901A 35   10	   OBLIS2  PULS   X
+  901C 30   02			   LEAX   2,X
+  901E 8C   0800			 CMPX   #HSHBTM
+  9021 26   EE			   BNE	OBLIS1
+  9023 39					RTS
+					 ***
+					 ***  ( POP 'var ) FSUBR
+					 ***	  (PROG1 (CAR var) (SETQ var (CDR var)))
+					 ***
+  9024 AE   84	   POP	 LDX	,X
+  9026 8C   0800			 CMPX   #CELTOP
+  9029 1024 F4A0			 LBCC   ERROR
+  902D AE   84			   LDX	,X
+  902F 10AE 84			   LDY	,X
+  9032 EC   22			   LDD	2,Y
+  9034 10AE A4			   LDY	,Y
+  9037 102B F4A9			 LBMI   ERRCAR
+  903B ED   84			   STD	,X
+  903D 39					RTS
+					 ***
+					 ***  ( PUSH item 'var ) FSUBR
+					 ***	  (SETQ var (CONS item var))
+					 ***
+  903E 36   10	   PUSH	PSHU   X
+  9040 AE   84			   LDX	,X
+  9042 102B F487			 LBMI   ERROR
+  9046 17   F935			 LBSR   EVAL
+  9049 37   10			   PULU   X
+  904B AE   98 02			LDX	[2,X]
+  904E 8C   0800			 CMPX   #CELTOP
+  9051 1024 F478			 LBCC   ERROR
+  9055 AE   84			   LDX	,X
+  9057 34   10			   PSHS   X
+  9059 AE   84			   LDX	,X
+  905B 1E   12			   EXG	X,Y
+  905D 8D   04			   BSR	CONS
+  905F 10AF F1			   STY	[,S++]
+  9062 39					RTS
+					 
+					 
+					 *--------------------------------------
+					 *
+					 *	  GARBAGE COLLECTION
+					 *
+					 *--------------------------------------
+					 ***
+					 ***  ( CONS e1 e2 ) SUBR
+					 ***	  val <= list
+					 ***
+  9063 36   10	   CONS	PSHU   X
+  9065 36   20	   CONSU   PSHU   Y
+  9067 8D   17	   CONSUU  BSR	NEW
+  9069 37   06			   PULU   D
+  906B ED   22			   STD	2,Y
+  906D 37   06			   PULU   D
+  906F ED   A4			   STD	,Y
+  9071 39					RTS
+					 *
+  9072 30   A4	   CONSN   LEAX   ,Y
+  9074 108E 0418	 CONSN1  LDY	#NIL
+  9078 20   E9			   BRA	CONS
+					 *
+					 *  get a free cell ( address in Y )
+					 *
+  907A 34   10	   NEW0	PSHS   X
+  907C 8D   0E			   BSR	GBC
+  907E 35   10			   PULS   X
+  9080 10BE 813B	 NEW	 LDY	FREE
+  9084 EC   A4			   LDD	,Y
+  9086 2B   F2			   BMI	NEW0
+  9088 FD   813B			 STD	FREE
+  908B 39					RTS
+					 ***
+					 ***  ( GBC ) SUBR
+					 ***	  garbage collection
+					 ***	  val <= # of collected cells
+					 ***
+  908C 34   41	   GBC	 PSHS   U,CC
+  908E 1A   50			   ORCC   #$50
+  9090 8D   1B			   BSR	MARKS
+  9092 8D   71			   BSR	COLLCT
+  9094 1F   31			   TFR	U,X
+  9096 35   41			   PULS   U,CC
+  9098 8C   0003			 CMPX   #3
+  909B 1025 F401			 LBCS   ERRGBC
+  909F 17   F3B2			 LBSR   MNAX
+  90A2 8E   912C			 LDX	#GMSG
+  90A5 B6   8134			 LDA	GBCSW
+  90A8 1026 F4D6			 LBNE   MSG
+  90AC 39					RTS
+					 *
+					 *  mark used cells
+					 *
+  90AD 108E A000	 MARKS   LDY	#ATMTOP
+  90B1 AE   A1	   MARKS1  LDX	,Y++
+  90B3 8D   3F			   BSR	MARK
+  90B5 AE   A1			   LDX	,y++
+  90B7 8D   3B			   BSR	MARK
+  90B9 AE   A4			   LDX	,Y
+  90BB 8C   8000			 CMPX   #CELBTM
+  90BE 24   02			   BCC	MARKS2
+  90C0 8D   32			   BSR	MARK
+  90C2 31   23	   MARKS2  LEAY   3,Y
+  90C4 A6   A0	   MARKS3  LDA	,Y+
+  90C6 26   FC			   BNE	MARKS3
+  90C8 10BC 813D			 CMPY   ATMEND
+  90CC 25   E3			   BCS	MARKS1
+  90CE 20   06			   BRA	MARKS5
+					 *
+  90D0 AE   C1	   MARKS4  LDX	,U++
+  90D2 2B   02			   BMI	MARKS5
+  90D4 8D   1E			   BSR	MARK
+  90D6 1183 C000	 MARKS5  CMPU   #USKBTM
+  90DA 25   F4			   BCS	MARKS4
+  90DC BE   8137			 LDX	CATCHL
+  90DF 8D   13			   BSR	MARK
+  90E1 39					RTS
+					 *
+					 *  mark list ( X )
+					 *
+  90E2 34   10	   MARK0   PSHS   X
+  90E4 118C 94F9			 CMPS   #LSPBTM+30
+  90E8 1025 0085			 LBCS   QUIT
+  90EC 1F   01			   TFR	D,X
+  90EE 8D   04			   BSR	MARK
+  90F0 35   10			   PULS   X
+  90F2 AE   02			   LDX	2,X
+  90F4 8C   0800	 MARK	CMPX   #CELTOP
+  90F7 25   0B			   BCS	MAKRTS
+  90F9 EC   84			   LDD	,X
+  90FB C5   01			   BITB   #1
+  90FD 26   05			   BNE	MAKRTS
+  90FF 6C   01			   INC	1,X
+  9101 4D					TSTA
+  9102 2A   DE			   BPL	MARK0
+  9104 39			MAKRTS  RTS
+					 *
+					 *  collect frdd cells
+					 *
+  9105 8E   0800	 COLLCT  LDX	#CELTOP
+  9108 108E 0418			 LDY	#NIL
+  910C CE   0000			 LDU	#0
+  910F E6   01	   COLL1   LDB	1,X
+  9111 C5   01			   BITB   #1
+  9113 26   09			   BNE	COLL2
+  9115 10AF 84			   STY	,X
+  9118 31   84			   LEAY   ,X
+  911A 33   41			   LEAU   1,U
+  911C 20   02			   BRA	COLL3
+  911E 6A   01	   COLL2   DEC	1,X
+  9120 30   04	   COLL3   LEAX   4,X
+  9122 8C   8000			 CMPX   #CELBTM
+  9125 25   E8			   BCS	COLL1
+  9127 10BF 813B			 STY	FREE
+  912B 39					RTS
+					 *
+					 *
+  912C 2D 2D 47 61   GMSG	FCC	/--Garbage Collection--/,CR,LF,0
+  9130 72 62 61 67   
+  9134 65 20 43 6F   
+  9138 6C 6C 65 63   
+  913C 74 69 6F 6E   
+  9140 2D 2D 0D 0A   
+  9144 00			
+					 
+					 
+					 *--------------------------------------
+					 *
+					 *	  DISK I/O
+					 *
+					 *--------------------------------------
+					 ***
+					 ***  ( MREAD filename ) SUBR
+					 ***	  read s-expr from DISK
+					 ***	  val <= s-expr
+					 ***
+  9145 8D   10	   MREAD   BSR	OPENR	 open file
+  9147 17   F5B4			 LBSR   READ	  read s-expr
+  914A 20   68			   BRA	CLOSEI	close file
+					 ***
+					 ***  ( MPRINT filename expr ) SUBR
+					 ***	  write expr into DISK file
+					 ***	  val <= expr
+					 ***
+  914C 8D   14	   MPRINT  BSR	OPENW	 open output file
+  914E 30   A4			   LEAX   ,Y
+  9150 17   F454			 LBSR   PRINT	 print expr
+  9153 20   5C			   BRA	CLOSEO	close file
+					 ***
+					 ***  ( LOAD 'filename ) FSUBR
+					 ***	  load programs
+					 ***	  val <= NIL
+					 ***
+  9155 AE   84	   LOAD	LDX	,X
+					 ***
+					 ***  ( OPENR filename ) SUBR
+					 ***	  open input file
+					 ***	  val <= NIL
+					 ***
+  9157 34   10	   OPENR   PSHS   X
+  9159 8D   59			   BSR	CLOSEI	close input file
+  915B 35   10			   PULS   X
+  915D 17   F6D3			 LBSR   STRING
+  9160 20   4C			   BRA	OPENFI	open input file
+					 ***
+					 ***  ( OPENW filename ) SUBR
+					 ***	  open output file
+					 ***	  val <= NIL
+					 ***
+  9162 34   10	   OPENW   PSHS   X
+  9164 8D   4B			   BSR	CLOSEO	close output file
+  9166 35   10			   PULS   X
+  9168 17   F6C8			 LBSR   STRING
+  916B 20   3E			   BRA	OPENFO	open output file
+					 ***
+					 ***  ( CLOSER ) SUBR
+					 ***	  close read file
+					 ***	  val <= NIL
+					 ***
+			   91B4  CLOSER  EQU	CLOSEI
+					 ***
+					 ***  ( CLOSEW ) SUBR
+					 ***	  close write file
+					 ***	  val <= NIL
+					 ***
+			   91B1  CLOSEW  EQU	CLOSEO
+					 ***
+					 ***  ( CLOSE ) SUBR
+					 ***	  close I/O files
+					 ***	  val <= NIL
+					 ***
+  916D 8D   45	   CLOSE   BSR	CLOSEI
+  916F 20   40			   BRA	CLOSEO
+					 ***
+					 ***  ( QUIT ) SUBR
+					 ***	  terminate lisp, return to monitor
+					 ***
+  9171 8D   FA	   QUIT	BSR	CLOSE	 close any open files
+  9173 8E   917B			 LDX	#QMSG
+  9176 17   F409			 LBSR   MSG	   print message
+  9179 20   3F			   BRA	MON
+					 *
+  917B 0D 0A		 QMSG	FCC	CR,LF
+  917D 6D 61 79 20		   FCC	/may the force be with you!/
+  9181 74 68 65 20   
+  9185 66 6F 72 63   
+  9189 65 20 62 65   
+  918D 20 77 69 74   
+  9191 68 20 79 6F   
+  9195 75 21		 
+  9197 0D 0A 00			  FCB	CR,LF,0
+					 ***
+					 ***  ( DOS 'command ) FSUBR
+					 ***	  execute DOS command
+					 ***	  val <= NIL
+					 ***
+  919A AE   84	   DOS	 LDX	,X
+  919C 17   F694			 LBSR   STRING
+  919F 34   60			   PSHS   Y,U
+  91A1 8D   14			   BSR	DODOS
+  91A3 35   E0			   PULS   Y,U,PC
+					 
+					 
+					 ***************************************
+					 *
+					 *	  LISP-09 I/O DRIVERS
+					 *		  1982.9.21
+					 *
+					 ***************************************
+					 *
+					 *  JUMP TABLE
+					 *
+  91A5 16   029A	 OUTPUT  LBRA   OUTPT1
+					 *	output char in A to terminal ( OUTSW = 0 ) or
+					 *	disk (OUTSW <> 0 )
+					 *
+  91A8 16   02A5	 INPUT   LBRA   INPUT1
+					 *	input char from terminal ( INSW = 0 ) or disk
+					 *	( INSW <> 0 ) without echo
+					 *
+  91AB 16   02B5	 OPENFO  LBRA   OPNFO1
+					 *	open file for output
+					 *	X = filename pointer ( terminater = 0 )
+					 *
+  91AE 16   02C8	 OPENFI  LBRA   OPNFI1
+					 *	open file for input
+					 *	X = filename pointer
+					 *
+  91B1 16   030E	 CLOSEO  LBRA   CLSO1
+					 *	close output file
+					 *
+  91B4 16   0310	 CLOSEI  LBRA   CLSI1
+					 *	close input file
+					 *
+  91B7 16   0301	 DODOS   LBRA   DODOS1
+					 *	execute DOS command
+					 *	X = pointer to DOS command string
+					 *
+  91BA 7E   CD03	 MON	 JMP	FLEX
+					 *	return to FLEX
+					 *
+  91BD 16   0314	 INIT	LBRA   INI1
+					 *	initialize system
+					 *
+					 **********
+					 *
+					 *  SYSTEM ADDRESSES
+					 *
+			   CD03  FLEX	EQU	$CD03	 FLEX warm start entry
+			   D3F9  OUTCH   EQU	$D3F9	 output char ( pointer )
+			   D3E5  INCHNE  EQU	$D3E5	 input char ( pointer )
+			   CD18  PUTCHR  EQU	$CD18	 put character
+			   D406  FMS	 EQU	$D406	 FMS call
+			   CD24  PCRLF   EQU	$CD24	 output crlf
+			   CD2D  GETFIL  EQU	$CD2D	 get file specification
+			   CD33  SETEXT  EQU	$CD33	 set extension
+			   CD3F  RPTERR  EQU	$CD3F	 report error message
+			   CD4B  DOCMND  EQU	$CD4B	 call DOS as a subroutine
+			   C080  FLBUF   EQU	$C080	 FLEX input line buffer
+			   CC14  FLBUFP  EQU	$CC14	 FLEX line buffer pointer
+			   CC16  ESCRTN  EQU	$CC16	 escape return register
+			   CC0E  SYSDAT  EQU	$CC0E	 system date register
+					 *
+					 *  FMS functions
+					 *
+			   0001  FMSR	EQU	1		 : read command
+			   0002  FMSW	EQU	2		 : write command
+			   0004  FMSC	EQU	4		 : close command
+					 *
+					 *  FILE CONTROL BLOCKS
+					 *
+  91C0 00			OUTSW   FCB	0		 output file switch
+  91C1			   OUTFCB  RMB	320	   output file FCB
+  9301 00			INSW	FCB	0		 input file switch
+  9302			   INFCB   RMB	320	   input file FCB
+					 *
+					 *
+  9442 34   34	   OUTPT1  PSHS   B,X,Y
+  9444 8E   91C0			 LDX	#OUTSW
+  9447 6D   80			   TST	,X+
+  9449 26   14			   BNE	FLEXIO
+  944B BD   CD18			 JSR	PUTCHR
+  944E 35   B4			   PULS   B,X,Y,PC
+					 *
+  9450 34   34	   INPUT1  PSHS   B,X,Y
+  9452 8E   9301			 LDX	#INSW
+  9455 6D   80			   TST	,X+
+  9457 26   06			   BNE	FLEXIO
+  9459 AD   9F D3E5		  JSR	[INCHNE]
+  945D 35   B4			   PULS   B,X,Y,PC
+					 *
+  945F 8D   2E	   FLEXIO  BSR	CALFMS
+  9461 35   B4			   PULS   B,X,Y,PC
+					 *
+  9463 8D   40	   OPNFO1  BSR	SETSTR
+  9465 8E   91C1			 LDX	#OUTFCB
+  9468 BD   CD2D			 JSR	GETFIL
+  946B 25   2D			   BCS	FILERR
+  946D 86   01			   LDA	#1
+  946F B7   91C0			 STA	OUTSW
+  9472 BD   CD33			 JSR	SETEXT
+  9475 86   02			   LDA	#FMSW
+  9477 20   14			   BRA	OPNFIL
+					 *
+  9479 8D   2A	   OPNFI1  BSR	SETSTR
+  947B 8E   9302			 LDX	#INFCB
+  947E BD   CD2D			 JSR	GETFIL
+  9481 25   17			   BCS	FILERR
+  9483 86   01			   LDA	#1
+  9485 B7   9301			 STA	INSW
+  9488 BD   CD33			 JSR	SETEXT
+  948B 86   01			   LDA	#FMSR
+  948D A7   84	   OPNFIL  STA	,X
+  948F BD   D406	 CALFMS  JSR	FMS
+  9492 27   10			   BEQ	FMSRTS
+  9494 A6   01			   LDA	1,X
+  9496 81   08			   CMPA   #8
+  9498 27   06			   BEQ	FMSEOF
+  949A BD   CD3F	 FILERR  JSR	RPTERR
+  949D 16   EB63			 LBRA   WARMS
+  94A0 8D   25	   FMSEOF  BSR	CLSI1
+  94A2 86   0D			   LDA	#CR
+  94A4 39			FMSRTS  RTS
+					 *
+  94A5 34   20	   SETSTR  PSHS   Y
+  94A7 108E C080			 LDY	#FLBUF
+  94AB 10BF CC14			 STY	FLBUFP
+  94AF A6   80	   STSTR1  LDA	,X+
+  94B1 A7   A0			   STA	,Y+
+  94B3 26   FA			   BNE	STSTR1
+  94B5 86   0D			   LDA	#CR
+  94B7 A7   A2			   STA	,-Y
+  94B9 35   A0			   PULS   Y,PC
+					 *
+  94BB 8D   E8	   DODOS1  BSR	SETSTR
+  94BD BD   CD4B			 JSR	DOCMND
+  94C0 20   12			   BRA	INI1
+					 *
+  94C2 8E   91C0	 CLSO1   LDX	#OUTSW
+  94C5 20   03			   BRA	CLSIO
+					 *
+  94C7 8E   9301	 CLSI1   LDX	#INSW
+  94CA 6D   84	   CLSIO   TST	,X
+  94CC 27   D6			   BEQ	FMSRTS
+  94CE 6F   80			   CLR	,X+
+  94D0 86   04			   LDA	#FMSC
+  94D2 20   B9			   BRA	OPNFIL
+					 *
+  94D4 CC   8003	 INI1	LDD	#WARMS
+  94D7 FD   CC16			 STD	ESCRTN
+  94DA 39					RTS
+					 
+					 
+					 *--------------------------------------
+					 *
+					 *	  START UP INITIALIZATION
+					 *
+					 *--------------------------------------
+					 *
+			   94DB  XXXXX   EQU	*
+					 *
+					 *
+  94DB 10CE A000	 STARTU  LDS	#SSKBTM
+  94DF CE   C000			 LDU	#USKBTM
+  94E2 8E   956F			 LDX	#LSPMSG
+  94E5 CC   1E00			 LDD	#(CELBTM-CELTOP)/4
+  94E8 8D   61			   BSR	MSGOUT
+  94EA CC   0773			 LDD	#AAAAA-ATMTOP
+  94ED 8D   5C			   BSR	MSGOUT
+  94EF CC   188D			 LDD	#USKBTM-AAAAA
+  94F2 8D   57			   BSR	MSGOUT
+  94F4 CC   0B25			 LDD	#SSKBTM-LSPBTM
+  94F7 8D   52			   BSR	MSGOUT
+					 *
+  94F9 8E   0000			 LDX	#HSHTOP
+  94FC 6F   80	   STATU0  CLR	,X+
+  94FE 8C   0800			 CMPX   #HSHBTM
+  9501 26   F9			   BNE	STATU0
+  9503 8E   0800			 LDX	#CELTOP
+  9506 CC   0418			 LDD	#NIL
+  9509 FD   813B			 STD	FREE
+  950C ED   81	   STATU1  STD	,X++
+  950E 8C   8000			 CMPX   #CELBTM
+  9511 26   F9			   BNE	STATU1
+					 *
+  9513 8E   A000			 LDX	#ATMTOP
+  9516 34   10	   STATU2  PSHS   X
+  9518 30   07			   LEAX   7,X
+  951A 17   F322			 LBSR   CLRABF
+  951D 17   F340			 LBSR   STORES
+  9520 34   10			   PSHS   X
+  9522 17   F39E			 LBSR   MSA
+  9525 AE   62			   LDX	2,S
+  9527 AF   A4			   STX	,Y
+  9529 CC   A773			 LDD	#AAAAA
+  952C FD   813D			 STD	ATMEND
+  952F CC   A791			 LDD	#AAAAA+30
+  9532 FD   813F			 STD	USKTOP
+  9535 35   30			   PULS   X,Y
+  9537 8C   A773			 CMPX   #AAAAA
+  953A 26   DA			   BNE	STATU2
+					 *
+  953C CC   0012			 LDD	#START-COLDS-3
+  953F FD   8001			 STD	COLDS+1
+  9542 17   FC78			 LBSR   INIT
+  9545 17   FB44			 LBSR   GBC
+  9548 16   EAB5			 LBRA   COLDS
+					 *
+					 *  print opening messages
+					 *
+  954B 34   06	   MSGOUT  PSHS   D
+  954D 17   F032			 LBSR   MSG
+  9550 EC   E4			   LDD	,S
+  9552 AF   E4			   STX	,S
+  9554 8E   8122			 LDX	#NX
+  9557 ED   02			   STD	2,X
+  9559 6F   01			   CLR	1,X
+  955B 6F   84			   CLR	,X
+  955D 8D   05			   BSR	MSGOU1
+  955F 17   F04B			 LBSR   TERPRI
+  9562 35   90			   PULS   X,PC
+					 *
+  9564 86   D0	   MSGOU1  LDA	#-'0
+  9566 34   22			   PSHS   A,Y
+  9568 108E 8126			 LDY	#NY
+  956C 16   F0AA			 LBRA   PRINN1
+					 *
+					 *  messages
+					 *
+  956F 0D 0A		 LSPMSG  FCB	CR,LF
+  9571 2D 2D 2D 2D		   FCC	/---------------------------------------------/,CR,LF
+  9575 2D 2D 2D 2D   
+  9579 2D 2D 2D 2D   
+  957D 2D 2D 2D 2D   
+  9581 2D 2D 2D 2D   
+  9585 2D 2D 2D 2D   
+  9589 2D 2D 2D 2D   
+  958D 2D 2D 2D 2D   
+  9591 2D 2D 2D 2D   
+  9595 2D 2D 2D 2D   
+  9599 2D 2D 2D 2D   
+  959D 2D 0D 0A	  
+  95A0 4C 49 53 50		   FCC	/LISP-09 Interpreter  version 2.08  1983.10.07/,CR,LF
+  95A4 2D 30 39 20   
+  95A8 49 6E 74 65   
+  95AC 72 70 72 65   
+  95B0 74 65 72 20   
+  95B4 20 76 65 72   
+  95B8 73 69 6F 6E   
+  95BC 20 32 2E 30   
+  95C0 38 20 20 31   
+  95C4 39 38 33 2E   
+  95C8 31 30 2E 30   
+  95CC 37 0D 0A	  
+  95CF 20 20 43 6F		   FCC	/  Copyright (C) 1982 by Kogakuin University/,CR,LF
+  95D3 70 79 72 69   
+  95D7 67 68 74 20   
+  95DB 28 43 29 20   
+  95DF 31 39 38 32   
+  95E3 20 62 79 20   
+  95E7 4B 6F 67 61   
+  95EB 6B 75 69 6E   
+  95EF 20 55 6E 69   
+  95F3 76 65 72 73   
+  95F7 69 74 79 0D   
+  95FB 0A			
+  95FC 2D 2D 2D 2D		   FCC	/---------------------------------------------/,CR,LF
+  9600 2D 2D 2D 2D   
+  9604 2D 2D 2D 2D   
+  9608 2D 2D 2D 2D   
+  960C 2D 2D 2D 2D   
+  9610 2D 2D 2D 2D   
+  9614 2D 2D 2D 2D   
+  9618 2D 2D 2D 2D   
+  961C 2D 2D 2D 2D   
+  9620 2D 2D 2D 2D   
+  9624 2D 2D 2D 2D   
+  9628 2D 0D 0A	  
+  962B 23 20 6F 66		   FCC	/# of free cells  : /,0
+  962F 20 66 72 65   
+  9633 65 20 63 65   
+  9637 6C 6C 73 20   
+  963B 20 3A 20 00   
+  963F 61 74 6F 6D		   FCC	/atom area, used  : /,0
+  9643 20 61 72 65   
+  9647 61 2C 20 75   
+  964B 73 65 64 20   
+  964F 20 3A 20 00   
+  9653 55 73 65 72		   FCC	/User stack area  : /,0
+  9657 20 73 74 61   
+  965B 63 6B 20 61   
+  965F 72 65 61 20   
+  9663 20 3A 20 00   
+  9667 53 79 73 74		   FCC	/System stack area: /,0
+  966B 65 6D 20 73   
+  966F 74 61 63 6B   
+  9673 20 61 72 65   
+  9677 61 3A 20 00   
+					 
+					 
+					 *--------------------------------------
+					 *
+					 *	  ATOM INFORMATION TABLE
+					 *
+					 *--------------------------------------
+					 *
+  A000					   ORG	ATMTOP
+					 *
+					 *
+					 *	DATA FORMAT
+					 *
+					 *	 0,1   : value of atom
+					 *	 2,3   : p-list
+					 *	 4,5   : function value ( expr or address )
+					 *	  6	: function type
+					 *	 7---  : p-name ( terminater = 0 )
+					 *
+					 *
+					 *	MACROES
+					 *
+					 OBJ	 MACRO
+							 FDB	&1,&2,&3
+							 FCB	N&4
+							 FCC	/&5/,0
+							 ENDM
+					 *
+					 FN	  MACRO
+							 FDB	UNDEFI,NIL,&1
+							 FCB	N&2
+							 FCC	/&1/,0
+							 ENDM
+					 *
+					 *
+					 *
+			   0418  NIL	 EQU	$418+HSHTOP
+  A000					   OBJ	NIL,NIL,FALSE,LSUBR,NIL
+			   0400  T	   EQU	$400+HSHTOP
+  A00B					   OBJ	T,NIL,TRUE,LSUBR,T
+			   012A  UNDEFI  EQU	$12A+HSHTOP
+  A014					   OBJ	UNDEFI,NIL,ERRUND,ERR,undefined
+  A025			   prompt  OBJ	COLON,NIL,ERRUND,0,PROMPT
+			   0200  COLON   EQU	$200+HSHTOP
+  A033					   OBJ	UNDEFI,NIL,ERRUND,0,:
+			   00AA  LAMBDA  EQU	$0AA+HSHTOP
+  A03C					   OBJ	UNDEFI,NIL,ERRUND,0,LAMBDA
+			   0142  EXPR	EQU	$142+HSHTOP
+  A04A					   OBJ	UNDEFI,NIL,ERRUND,0,EXPR
+			   0146  FEXPR   EQU	$146+HSHTOP
+  A056					   OBJ	UNDEFI,NIL,ERRUND,0,FEXPR
+			   0468  MACRO   EQU	$468+HSHTOP
+  A063					   OBJ	UNDEFI,NIL,ERRUND,0,MACRO
+					 *
+			   0692  QUOTE   EQU	$692+HSHTOP
+  A070					   OBJ	UNDEFI,NIL,CAR,FSUBR,QUOTE
+					 *
+  A07D					   FN	 COLDS,SUBR
+  A08A					   FN	 WARMS,SUBR
+  A097					   FN	 QUOTIENT,LSUBR
+  A0A7					   FN	 TIMES,LSUBR
+  A0B4					   FN	 DIFFERENCE,LSUBR
+  A0C6					   FN	 PLUS,LSUBR
+  A0D2					   FN	 MAX,LSUBR
+  A0DD					   FN	 MIN,LSUBR
+  A0E8					   FN	 SIGN,SUBR
+  A0F4					   FN	 ADD1,SUBR
+  A100					   FN	 SUB1,SUBR
+  A10C					   FN	 ABS,SUBR
+  A117					   FN	 MINUS,SUBR
+  A124					   FN	 LOGAND,SUBR
+  A132					   FN	 LOGOR,SUBR
+  A13F					   FN	 LOGXOR,SUBR
+  A14D					   FN	 REMAINDER,SUBR
+  A15E					   FN	 DIVIDE,SUBR
+  A16C					   FN	 GCD,SUBR
+  A177					   FN	 RND,SUBR
+  A182					   FN	 INC,FSUBR
+  A18D					   FN	 DEC,FSUBR
+  A198					   FN	 CALL,SUBR
+  A1A4					   FN	 POKE,SUBR
+  A1B0					   FN	 PEEK,SUBR
+  A1BC					   FN	 ATOMLENGTH,SUBR
+  A1CE					   FN	 LENGTH,SUBR
+  A1DC					   FN	 ERROR,SUBR
+  A1E9					   FN	 CRLF,SUBR
+  A1F5					   FN	 SPACES,SUBR
+  A203					   FN	 PRINT,SUBR
+  A210					   FN	 TERPRI,SUBR
+  A21E					   FN	 LPRI,SUBR
+  A22A					   FN	 PRIN1,SUBR
+  A237					   FN	 TYO,SUBR
+  A242					   FN	 PRINH,SUBR
+  A24F					   FN	 TYI,SUBR
+  A25A					   FN	 READCH,SUBR
+  A268					   FN	 GETCH,SUBR
+  A275					   FN	 READ,SUBR
+  A281					   FN	 IMPLODE,SUBR
+  A290					   FN	 CONCAT,LSUBR
+  A29E					   FN	 EXPLODE,SUBR
+  A2AD					   OBJ	UNDEFI,NIL,EXPLN,SUBR,EXPLODEN
+  A2BD					   FN	 ATOMCDR,SUBR
+  A2CC					   FN	 ATOMCAR,SUBR
+  A2DB					   FN	 ASCII,SUBR
+  A2E8					   FN	 GENSYM,SUBR
+  A2F6					   FN	 EVAL,SUBR
+  A302					   OBJ	UNDEFI,NIL,EVLIS+2,SUBR,EVLIS
+  A30F					   OBJ	UNDEFI,NIL,EVBODY+2,SUBR,EVBODY
+  A31D					   FN	 COND,FSUBR
+  A329					   FN	 MAPCAR,SUBR
+  A337					   FN	 MAPCAN,SUBR
+  A345					   FN	 MAPC,SUBR
+  A351					   FN	 FUNCALL,LSUBR
+  A360					   FN	 APPLY,SUBR
+  A36D					   FN	 DEFUN,FSUBR
+  A37A					   FN	 DE,FSUBR
+  A384					   FN	 DF,FSUBR
+  A38E					   FN	 DM,FSUBR
+  A398					   FN	 SET,SUBR
+  A3A3					   FN	 SETQ,FSUBR
+  A3AF					   FN	 SETQQ,FSUBR
+  A3BC					   FN	 FVALUE,SUBR
+  A3CA					   FN	 PROPLIST,SUBR
+  A3DA					   FN	 GET,SUBR
+  A3E5					   FN	 PUT,LSUBR
+  A3F0					   FN	 CARMODE,SUBR
+  A3FF					   FN	 GBCMODE,SUBR
+  A40E					   FN	 ECHOMODE,SUBR
+  A41E					   FN	 PROG,FSUBR
+  A42A					   FN	 LOOP,FSUBR
+  A436					   FN	 GO,FSUBR
+  A440					   FN	 RETURN,SUBR
+  A44E					   FN	 PROGN,LSUBR
+  A45B					   FN	 PROG1,LSUBR
+  A468					   FN	 PROG2,LSUBR
+  A475					   FN	 CATCH,FSUBR
+  A482					   FN	 THROW,FSUBR
+  A48F					   FN	 ALPHORDER,SUBR
+  A4A0					   FN	 GREATERP,SUBR
+  A4B0					   FN	 LESSP,SUBR
+  A4BD					   FN	 SYMBOLP,SUBR
+  A4CC					   FN	 NUMBERP,SUBR
+  A4DB					   FN	 ATOM,SUBR
+  A4E7					   FN	 LISTP,SUBR
+  A4F4					   FN	 EQ,SUBR
+  A4FE					   FN	 NULL,SUBR
+  A50A					   FN	 NOT,SUBR
+  A515					   FN	 PLUSP,SUBR
+  A522					   FN	 MINUSP,SUBR
+  A530					   FN	 ONEP,SUBR
+  A53C					   FN	 ZEROP,SUBR
+  A549					   FN	 EQUAL,SUBR
+  A556					   FN	 MEMBER,SUBR
+  A564					   FN	 ASSOC,SUBR
+  A571					   FN	 MEMQ,SUBR
+  A57D					   FN	 ASSQ,SUBR
+  A589					   FN	 CAAAR,SUBR
+  A596					   FN	 CAADR,SUBR
+  A5A3					   FN	 CADAR,SUBR
+  A5B0					   FN	 CADDR,SUBR
+  A5BD					   FN	 CDAAR,SUBR
+  A5CA					   FN	 CDADR,SUBR
+  A5D7					   FN	 CDDAR,SUBR
+  A5E4					   FN	 CDDDR,SUBR
+  A5F1					   FN	 CAAR,SUBR
+  A5FD					   FN	 CADR,SUBR
+  A609					   FN	 CDAR,SUBR
+  A615					   FN	 CDDR,SUBR
+  A621					   FN	 CAR,SUBR
+  A62C					   FN	 CDR,SUBR
+  A637					   FN	 LAST,SUBR
+  A643					   FN	 REVERSE,SUBR
+  A652					   FN	 COPY,SUBR
+  A65E					   FN	 APPEND,LSUBR
+  A66C					   FN	 NCONC,LSUBR
+  A679					   FN	 AND,FSUBR
+  A684					   FN	 OR,FSUBR
+  A68E					   FN	 RPLACA,SUBR
+  A69C					   FN	 RPLACD,SUBR
+  A6AA					   FN	 LIST,LSUBR
+  A6B6					   FN	 OBLIST,SUBR
+  A6C4					   FN	 POP,FSUBR
+  A6CF					   FN	 PUSH,FSUBR
+  A6DB					   FN	 CONS,SUBR
+  A6E7					   FN	 GBC,SUBR
+  A6F2					   FN	 MREAD,SUBR
+  A6FF					   FN	 MPRINT,SUBR
+  A70D					   FN	 LOAD,FSUBR
+  A719					   FN	 OPENR,SUBR
+  A726					   FN	 OPENW,SUBR
+  A733					   FN	 CLOSER,SUBR
+  A741					   FN	 CLOSEW,SUBR
+  A74F					   FN	 CLOSE,SUBR
+  A75C					   FN	 QUIT,SUBR
+  A768					   FN	 DOS,FSUBR
+					 *
+					 *
+					 *
+			   A773  AAAAA   EQU	*
+							 END	COLDS
+
+0 ERROR(S) DETECTED
+
+SYMBOL TABLE:
+
+AAAAA  A773   ABF	80B5   ABFL   0064   ABFP   811A   ABS	820F   
+ADD1   81FE   ADD11  8202   ALPHO1 8DCE   ALPHOR 8DC6   AND	8FC3   
+AND1   8FC7   APMACR 8B83   APPEN1 8F5E   APPEND 8F5A   APPLY  8B2E   
+APPLY0 8B2A   APPLYL 8B89   APPXY  8F7A   APSUB1 8B7B   APSUB2 8B7E   
+APSUBR 8B70   ARITH  815B   ARITH1 8164   ASCII  8937   ASSOC  8E9A   
+ASSOC0 8E97   ASSOC1 8EA8   ASSQ   8EC1   ASSQ0  8EBC   ASSQ1  8ECE   
+ATMEND 813D   ATMTOP A000   ATOM   8DF3   ATOMCA 88B9   ATOMCD 88AD   
+ATOML1 846A   ATOMLE 845B   BEL	0007   BIND   8A52   BIND1  8A57   
+BIND2  8A75   BINDA  8A83   BINDA0 8A81   BINRTS 8A98   BLANK  85A3   
+BS	 0008   CAAAR  8ED0   CAADR  8ED4   CAAR   8ED6   CADAR  8EDA   
+CADDR  8EDE   CADR   8EE0   CALFMS 948F   CALL   8420   CAN	0018   
+CAR	8EE2   CARERR 8EE7   CARMOD 8CBF   CARRTS 8EF8   CARSW  8133   
+CARX   8EF4   CATCH  8D59   CATCH1 8D8C   CATCHL 8137   CATERR 8DA8   
+CDAAR  8F00   CDADR  8F04   CDAR   8F06   CDDAR  8F0A   CDDDR  8F0E   
+CDDR   8F10   CDR	8F12   CDRX   8EF9   CELBTM 8000   CELTOP 0800   
+CLOSE  916D   CLOSEI 91B4   CLOSEO 91B1   CLOSER 91B4   CLOSEW 91B1   
+CLRABF 883F   CLSI1  94C7   CLSIO  94CA   CLSO1  94C2   COLDS  8000   
+COLL1  910F   COLL2  911E   COLL3  9120   COLLCT 9105   COLON  0200   
+CONCAT 8865   COND   8AB6   COND0  8AB2   CONS   9063   CONSN  9072   
+CONSN1 9074   CONSU  9065   CONSUU 9067   COPY   8F33   COPY1  8F57   
+CPYRTS 8F59   CR	 000D   CRLF   8587   CRLF1  858E   DE	 8BB3   
+DE1	8BB6   DE2	8BB8   DE3	8BBA   DEC	83F4   DEFUN  8B96   
+DF	 8BCD   DF1	8BD0   DIFFER 814F   DIV	828D   DIV1   829C   
+DIV2   82A4   DIV3   82B5   DIV4   82D1   DIVIDE 825C   DIVRTS 8315   
+DM	 8BD4   DM1	8BD7   DOCMND CD4B   DODOS  91B7   DODOS1 94BB   
+DOS	919A   ECHOMO 8CD7   ECHOSW 8132   EOUT   86CE   EOUTB1 86CC   
+EOUTBS 86C4   EQ	 8DFF   EQUAL  8E60   EQUAL0 8E4D   EQUAL1 8E6B   
+EQUAL2 8E6F   EQUAL3 8E72   ERMRTS 8CCA   ERR	84C2   ERRATM 8513   
+ERRCAR 84E4   ERRCAT 84D1   ERRDE  8506   ERRGBC 84A0   ERRM   8480   
+ERRMSA 84B1   ERRNUM 854A   ERROR  84CD   ERRPRG 84FF   ERRPUT 855C   
+ERRS   8577   ERRSET 84F9   ERRSSK 848E   ERRSTR 8523   ERRUND 8535   
+ERRUSK 8497   ERRXY  8562   ESCRTN CC16   EVAL   897E   EVAL1  899C   
+EVAL2  899F   EVAL3  89A4   EVAL9  89CF   EVALL  89D2   EVALL1 89E2   
+EVALL2 89E0   EVBOD0 8AA2   EVBOD1 8AAF   EVBODY 8AA7   EVEXP1 8A41   
+EVEXP2 8A43   EVEXPR 8A3F   EVFEXP 8A4D   EVFSBR 896E   EVLIS  89E8   
+EVLIS1 8A11   EVLSB1 8A38   EVLSBR 8A36   EVMAC1 8978   EVMACR 8975   
+EVSBR1 8A2F   EVSUBR 8A14   EXPL1  8883   EXPL2  8898   EXPLN  8880   
+EXPLOD 887B   EXPR   0142   FALSE  8E0F   FEXPR  0146   FF	 000C   
+FILERR 949A   FLBUF  C080   FLBUFP CC14   FLEX   CD03   FLEXIO 945F   
+FMS	D406   FMSC   0004   FMSEOF 94A0   FMSR   0001   FMSRTS 94A4   
+FMSW   0002   FREE   813B   FUNCAL 8B20   FVALU1 8C45   FVALUE 8C22   
+GBC	908C   GBCMOD 8CCB   GBCSW  8134   GBUF   811C   GCD	826D   
+GCD1   8270   GENSY0 894E   GENSY1 8954   GENSY2 8957   GENSY3 8965   
+GENSYM 893F   GET	8C55   GETCH  8674   GETFIL CD2D   GETL1  8680   
+GETL2  8686   GETL3  86A4   GETL4  86AD   GETL5  86AF   GETL6  86B6   
+GETLIN 867A   GMSG   912C   GO	 8D40   GOSW   8135   GREATE 8DDB   
+HSHBTM 0800   HSHTOP 0000   IBF	804E   IBFL   0064   IBFP   80B3   
+IMPLD1 8867   IMPLD2 8877   IMPLOD 8865   IN	 86D6   IN1	86DB   
+IN2	86E5   INC	83DA   INCHNE D3E5   INF	81A5   INFCB  9302   
+INFV   841A   INI1   94D4   INIT   91BD   INITIO 8032   INITVA 8041   
+INPUT  91A8   INPUT1 9450   INSW   9301   LAMBDA 00AA   LAST   8F1E   
+LAST0  8F1A   LENGT1 8476   LENGTH 8472   LESSP  8DDD   LF	 000A   
+LIST   899C   LISTP  8DF9   LOAD   9155   LOGAND 821C   LOGOR  822E   
+LOGXOR 8240   LOOP   8CFC   LOOP1  8D09   LPRI   85C1   LPRI0  85B5   
+LPRI1  85C9   LSPBTM 94DB   LSPMSG 956F   LSPTOP 8000   MACRO  0468   
+MAKRTS 9104   MAPC   8B08   MAPC1  8B0A   MAPCA1 8AE8   MAPCAN 8AEB   
+MAPCAR 8ACD   MARK   90F4   MARK0  90E2   MARKS  90AD   MARKS1 90B1   
+MARKS2 90C2   MARKS3 90C4   MARKS4 90D0   MARKS5 90D6   MATM   878D   
+MATM1  87AB   MATM2  87AD   MATM3  87B3   MATM4  87C6   MATM5  87D2   
+MAX	817A   MAXRTS 83B4   MEMBE0 8E86   MEMBER 8E89   MEMQ   8EB3   
+MEMQ0  8EB0   MEMRTS 8EBB   MIN	8183   MINF   81AA   MINFV  8412   
+MINUS  8215   MINUS1 8217   MINUSP 8E23   MNA	81EE   MNA0   81EC   
+MNAA   8440   MNAA1  844B   MNAX   8454   MNAY   8452   MON	91BA   
+MONE   819B   MONEV  841C   MPRINT 914C   MREAD  9145   MSA	88C3   
+MSA1   88C9   MSA2   88DC   MSA3   88EF   MSA4   88D7   MSA5   88FA   
+MSA6   8912   MSAA   88BE   MSG	8582   MSG0   857F   MSGOU1 9564   
+MSGOUT 954B   MULT   8316   MULT1  8339   MULT2  8346   N0	 0000   
+N10	87FE   N10A   87F1   N10A1  880A   NADD   837F   NASL   830D   
+NASL2  830B   NASL3  8309   NASL4  8307   NCMP   839D   NCONC  8F97   
+NCONC1 8F9B   NCONC2 8FB3   NCONC3 8FBC   NCONC4 8FBF   NCONC5 8FC1   
+NERR   0007   NEW	9080   NEW0   907A   NEXPR  0009   NFEXPR 000A   
+NFSUBR 0002   NIL	0418   NLSUBR 0003   NMACRO 000C   NMAX   83A8   
+NMAX1  83AC   NMIN   83B5   NNEG   82F6   NNEGY  82E5   NOT	8E0A   
+NR	 812C   NSIGN  813A   NSUB   838E   NSUBR  0001   NULL   8E0A   
+NUMBER 8DEE   NUMRTS 81EB   NUMS   81AF   NUMX   81BE   NUMXY  81BC   
+NUMY   81D4   NX	 8122   NY	 8126   OBLIS1 9011   OBLIS2 901A   
+OBLIST 900A   OLDCHR 8139   ONE	81A0   ONEP   8E32   ONEP1  8E38   
+ONEV   8416   OP	 8130   OPENFI 91AE   OPENFO 91AB   OPENR  9157   
+OPENW  9162   OPNFI1 9479   OPNFIL 948D   OPNFO1 9463   OR	 8FE9   
+OR0	8FDC   OR1	8FEF   OUT	8602   OUTCH  D3F9   OUTFCB 91C1   
+OUTPT1 9442   OUTPUT 91A5   OUTSW  91C0   PCRLF  CD24   PEEK   843A   
+PLUS   8154   PLUS1  8157   PLUSP  8E14   POKE   842E   POP	9024   
+PRG1   8CF4   PRGRTS 8D3F   PRIN1  85D6   PRIN2  85F0   PRINH  8643   
+PRINH1 865E   PRINH2 8654   PRINH4 8650   PRINN  8605   PRINN1 8619   
+PRINN2 8632   PRINN3 8634   PRINT  85A7   PRIRTS 85A2   PROG   8CE3   
+PROG1  8EE2   PROG2  8EE0   PROG9  8CE7   PROGN  8D54   PROGN0 8D4F   
+PROGS  8D14   PROGS1 8D30   PROGS2 8D3D   PROPLI 8C48   PUSH   903E   
+PUT	8C6F   PUT1   8CA7   PUTCHR CD18   PUTERR 8C72   QMSG   917B   
+QUIT   9171   QUOTE  0692   QUOTIE 8141   READ   86FE   READA  8776   
+READA0 8770   READA1 878A   READCH 866F   READG  8738   READR  8742   
+READR1 8760   READR2 8762   READR3 876C   READS  8819   READS0 8817   
+REDRTS 876F   REMAIN 8253   RETURN 8D49   REVER0 8F23   REVERS 8F2A   
+RND	83BA   RNDV   840E   RPLACA 8FF2   RPLACD 8FFE   RPTERR CD3F   
+RTNSW  8136   SET	8BDB   SET9   8C1F   SETEXT CD33   SETQ   8C00   
+SETQ0  8BEE   SETQ1  8C06   SETQQ  8C13   SETQQ0 8C09   SETSTR 94A5   
+SIGN   818C   SKIP   86F3   SKIP0  86E9   SPACE1 859C   SPACES 8595   
+SSKBTM A000   START  8015   START1 8023   STARTU 94DB   STATU0 94FC   
+STATU1 950C   STATU2 9516   STORE0 885E   STORE1 885C   STOREA 884B   
+STORES 8860   STRING 8833   STSTR1 94AF   SUB1   8209   SYMBOL 8DE7   
+SYSDAT CC0E   T	  0400   TERPRI 85AD   THROW  8D8E   THROW1 8DBC   
+TIMES  8146   TIMES1 8149   TRUE   8E05   TSTCLC 87EE   TSTDEC 87E7   
+TSTHEX 87DC   TSTRTS 87F0   TYI	866A   TYO	863C   UNBIN0 8A99   
+UNBIND 8A9D   UNDEFI 012A   USKBTM C000   USKTOP 813F   WARMS  8003   
+WARMS1 8006   WARMS2 8009   XXXXX  94DB   ZERO   8196   ZEROP  8E49   
+ZEROV  8414   prompt A025   
+
+
+
+

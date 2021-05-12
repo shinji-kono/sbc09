@@ -1,0 +1,3217 @@
+
+
+
+*======================================
+*
+*  LISP-09 INTERPRETER
+*  vers.2.08
+*  written by TERUO SERIZAWA
+*  1982.11.04
+*    83.10.07
+*
+*======================================
+*
+*
+*    ADDRESS MAP
+*
+HSHTOP EQU $0000
+HSHBTM EQU HSHTOP+$800
+*    atom hash table
+*    # of atoms : 1024
+*    if contents=0 : undefined
+*             else : pointer to atom information table
+*
+CELTOP EQU HSHBTM
+CELBTM EQU $8000
+*    cell area ( lists and numbers )
+*    # of cells : 7680
+*
+LSPTOP EQU CELBTM
+LSPBTM EQU XXXXX
+*    LISP-09 interpreter
+*
+*    S stack is here
+SSKBTM EQU $A000
+ATMTOP EQU SSKBTM
+*    atom information table
+*
+*  ATMEND indicates table's end ( variable )
+*  USKTOP indicates U stack's barrier ( variable )
+*    ( [USKTOP] == [ATMEND] + 30 )
+*
+*    U stack is here
+USKBTM EQU $C000
+*
+*    $C000-$FFFF FLEX SYSTEM
+*
+
+
+*--------------------------------------
+*
+*    MAIN PROGRAM
+*
+*--------------------------------------
+*
+ ORG LSPTOP
+COLDS LBRA STARTU
+WARMS LBRA WARMS2
+*
+*  unbind variables
+*
+WARMS1 LBSR UNBIND
+WARMS2 CMPU USKTOP
+ BCS START
+ CMPU #USKBTM
+ BCS WARMS1
+*
+*  initialize system
+*
+START LDS #SSKBTM
+ LDU #USKBTM
+ BSR INITIO
+ BSR INITVA
+ LBSR TERPRI
+*
+*
+*    LISP system top level function
+*
+START1 LBSR READ
+ LEAX ,Y
+ LBSR EVAL
+ LEAX ,Y
+ LBSR PRINT
+ BRA START1
+*
+*  initialize I/O
+*
+INITIO LBSR CLOSE
+ CLR ECHOSW
+ CLR OLDCHR
+ LDX IBFP
+ CLR ,X
+ RTS
+*
+*  initialize system variables
+*
+INITVA CLR GOSW
+ CLR RTNSW
+ LDX #NIL
+ STX CATCHL
+ RTS
+
+*--------------------------------------
+*
+*    CONSTANTS AND VARIABLES
+*
+*--------------------------------------
+*
+*
+*    MACROES
+*
+TESTS MACRO
+ CMPS #LSPBTM+100
+ LBCS ERRSSK
+ ENDM
+*
+TESTU MACRO
+ CMPU USKTOP
+ LBCS ERRUSK
+ ENDM
+*
+*
+*    ASCII CHARACTERS
+*
+BEL EQU $07
+BS EQU $08
+LF EQU $0A
+FF EQU $0C
+CR EQU $0D
+CAN EQU $18
+*
+*
+*    FUNCTION TYPES
+*
+N0 EQU 0
+NSUBR EQU 1
+NFSUBR EQU 2
+NLSUBR EQU 3
+NERR EQU 7
+NEXPR EQU 9
+NFEXPR EQU 10
+NMACRO EQU 12
+*
+*
+*    SYSTEM VARIABLES
+*
+IBFL EQU 100
+IBF RMB IBFL
+ FCB 0
+IBFP FDB IBF
+*
+ABFL EQU 100
+ABF RMB ABFL
+ FCB 0
+ABFP FDB ABF
+*
+GBUF FCC /0000/
+ FDB 0
+NX RMB 4
+NY RMB 4
+ FDB 0
+NR RMB 4
+OP RMB 2
+*
+ECHOSW FCB 0
+CARSW FCB 0
+GBCSW FCB 0
+GOSW FCB 0
+RTNSW FCB 0
+CATCHL FDB NIL
+*
+OLDCHR FCB 0
+NSIGN FCB 0
+*
+FREE FDB NIL
+ATMEND FDB AAAAA
+USKTOP FDB AAAAA+30
+
+*--------------------------------------
+*
+*    ARITHMETIC FUNCTIONS
+*
+*--------------------------------------
+***
+***  ( QUOTIENT n1 n2 ... )
+***      val <= n1 / n2 / ...
+***
+QUOTIE LDD #DIV
+ BRA TIMES1
+***
+***  ( TIMES n1 n2 ... ) LSUBR
+***      val <= n1 * n2 * ...
+***
+TIMES LDD #MULT
+TIMES1 TST ,X
+ BMI ONE
+ BRA ARITH
+***
+***  ( DIFFERENCE n1 n2 ... ) LSUBR
+***      val <= n1 - n2 - ...
+***
+DIFFER LDD #NSUB
+ BRA PLUS1
+***
+***  ( PLUS n1 n2 ... ) LSUBR
+***      val <= n1 + n2 + ...
+***
+PLUS LDD #NADD
+PLUS1 TST ,X
+ BMI ZERO
+*
+*  execute arithmetic functions
+*    X : list of arguments
+*
+ARITH STD OP
+ PSHU X
+ LDX ,X
+ BSR NUMX
+ARITH1 LDY ,U
+ LDY 2,Y
+ STY ,U
+ LDY ,Y
+ BMI MNA0
+ BSR NUMY
+ JSR [OP]
+ BRA ARITH1
+***
+***  ( MAX n1 n2 ... ) LSUBR
+***      val <= maximum value of numbers
+***
+MAX LDD #NMAX
+ TST ,X
+ BMI MINF
+ BRA ARITH
+***
+***  ( MIN n1 n2 ... ) LSUBR
+***      val <= minimum value of numbers
+***
+MIN LDD #NMIN
+ TST ,X
+ BMI INF
+ BRA ARITH
+***
+***  ( SIGN n ) SUBR
+***      if n>0 then val <= 1
+***         n=0             0
+***         n<0            -1
+***
+SIGN BSR NUMX
+ BMI MONE
+ BNE ONE
+ LDD 2,X
+ BNE ONE
+*
+*  value <= 0
+*
+ZERO LDX #ZEROV
+ BRA MNA
+*
+* value <= -1
+*
+MONE LDX #MONEV
+ BRA MNA
+*
+*  value <= 1
+*
+ONE LDX #ONEV
+ BRA MNA
+*
+*  value <= infinity ( largest number )
+*
+INF LDX #INFV
+ BRA MNA
+*
+*  value <= minus infinity ( smallest number )
+*
+MINF LDX #MINFV
+ BRA MNA
+*
+*  transpose numerical atom(s) into number register(s)
+*
+NUMS LBPL ERRNUM
+ ASRA
+ RORB
+ BITA #$20
+ BNE NUMRTS
+ ANDA #$3F
+ RTS
+*
+NUMXY BSR NUMY
+NUMX CMPX #CELTOP
+ LBCS ERRNUM
+ LDD 2,X
+ STD NX+2
+ LDD ,X
+ BSR NUMS
+ LDX #NX
+ STD ,X
+ RTS
+*
+NUMY CMPY #CELTOP
+ LBCS ERRNUM
+ LDD 2,Y
+ STD NY+2
+ LDD ,Y
+ BSR NUMS
+ LDY #NY
+ STD ,Y
+NUMRTS RTS
+*
+*  make numerical atom
+*    X : number register
+*
+MNA0 LEAU 2,U
+*
+MNA LBSR NEW
+ LDD ,X
+ ASLB
+ ROLA
+ ORA #$80
+ STD ,Y
+ LDD 2,X
+ STD 2,Y
+ RTS
+***
+***  ( ADD1 n ) SUBR
+***      val <= n + 1
+***
+ADD1 LDY #ONEV
+ADD11 BSR NUMX
+ LBSR NADD
+ BRA MNA
+***
+***  ( SUB1 n ) SUBR
+***      val <= n - 1
+***
+SUB1 LDY #MONEV
+ BRA ADD11
+***
+***  ( ABS n ) SUBR
+***      val <= absolute value of n
+***
+ABS BSR NUMX
+ BPL MNA
+ BRA MINUS1
+***
+***  ( MINUS n ) SUBR
+***      val <= - n
+***
+MINUS BSR NUMX
+MINUS1 LBSR NNEG
+ BRA MNA
+***
+***  ( LOGAND n1 n2 ) SUBR
+***      logical <AND> operation
+***      val <= n1 and n2
+***
+LOGAND BSR NUMXY
+ ANDA ,Y
+ ANDB 1,Y
+ STD ,X
+ LDD 2,X
+ ANDA 2,Y
+ ANDB 3,Y
+ STD 2,X
+ BRA MNA
+***
+***  ( LOGOR n1 n2 ) SUBR
+***      logical <OR> operation
+***      val <= n1 or n2
+***
+LOGOR BSR NUMXY
+ ORA ,Y
+ ORB 1,Y
+ STD ,X
+ LDD 2,X
+ ORA 2,Y
+ ORB 3,Y
+ STD 2,X
+ BRA MNA
+***
+***  ( LOGXOR n1 n2 ) SUBR
+***      logical ,exclusive-OR> operation
+***      val <= n1 xor n2
+***
+LOGXOR LBSR NUMXY
+ EORA ,Y
+ EORB 1,Y
+ STD ,X
+ LDD 2,X
+ EORA 2,Y
+ EORB 3,Y
+ STD 2,X
+ BRA MNA
+***
+***  ( REMAINDER n1 n2 ) SUBR
+***      val <= n1 mod n2
+***
+REMAIN LBSR NUMXY
+ BSR DIV
+ LEAX ,Y
+ BRA MNA
+***
+***  ( DIVIDE n1 n2 ) SUBR
+***      n1 / n2
+***      val <= dot pAir of quotient and remainder
+***
+DIVIDE LBSR NUMXY
+ BSR DIV
+ BSR MNA
+ PSHU Y
+ LDX #NY
+ BSR MNA
+ LBRA CONSU
+***
+***  ( GCD n1 n2 ) SUBR
+***      greatest common divisor
+***      val <= GCD ( n1, n2 )
+***
+GCD LBSR NUMXY
+GCD1 LDD 2,Y
+ PSHS D
+ LDD ,Y
+ PSHS D
+ BSR DIV
+ PULS D
+ STD ,X
+ PULS D
+ STD 2,X
+ LDD 2,Y
+ BNE GCD1
+ LDD ,Y
+ BNE GCD1
+ LBRA MNA
+*
+*  divide NX by NY
+*    NX <= NX / NY quotient
+*    NY <= NX mod NY remainder
+*
+DIV LEAS -8,S
+ LDD #30
+ STD 4,S
+ LDA ,X
+ BPL DIV1
+ INC 4,S
+ BSR NNEG
+DIV1 LDA ,Y
+ BMI DIV2
+ INC 4,S
+ BSR NNEGY
+DIV2 LDD ,Y
+ STD ,S
+ LDD 2,Y
+ STD 2,S
+ LDD #0
+ STD ,Y
+ STD 2,Y
+ BSR NASL3
+DIV3 ROL 3,Y
+ ROL 2,Y
+ ROL 1,Y
+ ROL ,Y
+ LDD 2,Y
+ ADDD 2,S
+ STD 6,S
+ LDD ,Y
+ ADCB 1,S
+ ADCA ,S
+ BCC DIV4
+ STD ,Y
+ LDD 6,S
+ STD 2,Y
+DIV4 ROL 3,X
+ ROL 2,X
+ ROL 1,X
+ ROL ,X
+ DEC 5,S
+ BNE DIV3
+ DEC 4,S
+ LEAS 8,S
+ BEQ DIVRTS
+ BSR NNEG
+*
+*  negate number
+*    Y : number register
+*
+NNEGY LDD #0
+ SUBD 2,Y
+ STD 2,Y
+ LDD #0
+ SBCB 1,Y
+ SBCA ,Y
+ STD ,Y
+ RTS
+*
+*  negate number
+*    X : number register
+*
+NNEG LDD #0
+ SUBD 2,X
+ STD 2,X
+ LDD #0
+ SBCB 1,X
+ SBCA ,X
+ STD ,X
+ RTS
+*
+*  arithmetic shift left
+*    X : number register
+*
+NASL4 BSR NASL
+NASL3 BSR NASL
+NASL2 BSR NASL
+NASL ASL 3,X
+ ROL 2,X
+ ROL 1,X
+ ROL ,X
+DIVRTS RTS
+*
+*  multiply NX with NY
+*    NX <= NX * NY
+*
+MMM MACRO
+ LDA &1,S
+ LDB &2,Y
+ MUL
+ ENDM
+*
+MULT LDD 2,X
+ PSHS D
+ LDD ,X
+ PSHS D
+ MMM 3,3
+ STD 2,X
+ MMM 2,2
+ STD ,X
+ MMM 3,2
+ ADDD 1,X
+ STD 1,X
+ BCC MULT1
+ INC ,X
+MULT1 MMM 2,3
+ ADDD 1,X
+ STD 1,X
+ BCC MULT2
+ INC ,X
+MULT2 MMM 1,3
+ ADDD ,X
+ STD ,X
+ MMM 3,1
+ ADDD ,X
+ STD ,X
+ MMM 0,3
+ ADDB ,X
+ STB ,X
+ MMM 1,2
+ ADDB ,X
+ STB ,X
+ MMM 2,1
+ ADDB ,X
+ STB ,X
+ MMM 3,0
+ ADDB ,X
+ STB ,X
+ LEAS 4,S
+ RTS
+*
+*  add numbers
+*    NX <= NX + NY
+*
+NADD LDD 2,X
+ ADDD 2,Y
+ STD 2,X
+ LDD ,X
+ ADCB 1,Y
+ ADCA ,Y
+ STD ,X
+ RTS
+*
+*  subtract numbers
+*    NX <= NX - NY
+*
+NSUB LDD 2,X
+ SUBD 2,Y
+ STD 2,X
+ LDD ,X
+ SBCB 1,Y
+ SBCA ,Y
+ STD ,X
+ RTS
+*
+*  compare numbers
+*    CCR <= NX - NY
+*
+NCMP LDD 2,X
+ SUBD 2,Y
+ LDD ,X
+ SBCB 1,Y
+ SBCA ,Y
+ RTS
+*
+*    NX <= max ( NX, NY )
+*
+NMAX BSR NCMP
+ BGE MAXRTS
+NMAX1 LDD ,Y
+ STD ,X
+ LDD 2,Y
+ STD 2,X
+MAXRTS RTS
+*
+*    NX <= min ( NX, NY )
+*
+NMIN BSR NCMP
+ BGE NMAX1
+ RTS
+***
+***  ( RND n ) SUBR
+***      generate random number
+***      val <= 0 .. n-1
+***
+RND LBSR NUMX
+ LDX #NR
+ LDY #RNDV
+ LBSR MULT
+ LDY #ONEV
+ BSR NADD
+ LEAY -2,X
+ LDX #NX
+ LBSR MULT
+ LEAX -2,X
+ LBRA MNA
+***
+***  ( INC 'var ) FSUBR
+***      increae value of var by 1
+***      (SETQ var (ADD1 var))
+***
+INC LDX ,X
+ LBMI ERROR
+ CMPX #CELTOP
+ LBCC ERRATM
+ LDX ,X
+ PSHS X
+ LDX ,X
+ LBSR ADD1
+ STY [,S++]
+ RTS
+***
+***  ( DEC 'var ) FSUBR
+***      decrease value of var by 1
+***      (SETQ var (SUB1 var))
+***
+DEC LDX ,X
+ LBMI ERROR
+ CMPX #CELTOP
+ LBCC ERRATM
+ LDX ,X
+ PSHS X
+ LDX ,X
+ LBSR SUB1
+ STY [,S++]
+ RTS
+*
+*  numerical constants
+*
+RNDV FDB $0019,$660D
+MINFV FDB $2000
+ZEROV FDB $0000
+ONEV FDB $0000,$0001
+INFV FDB $1FFF
+MONEV FDB $FFFF,$FFFF
+***
+***  ( CALL address ) SUBR
+***      call subroutine
+***      val <= NIL
+***
+CALL LBSR NUMX
+ PSHS U
+ JSR [2,X]
+ LDY #NIL
+ PULS U,PC
+***
+***  ( POKE address value(8) ) SUBR
+***      store Value
+***      val <= value
+***
+POKE PSHS Y
+ LBSR NUMXY
+ LDA 3,Y
+ STA [2,X]
+ PULS Y,PC
+***
+***  ( PEEK address ) SUBR
+***      val <= memory value of address
+***
+PEEK LBSR NUMX
+ LDA [2,X]
+*
+*  make numerical atom ( A )
+*
+MNAA PSHS A
+ LBSR NEW
+ PULS A
+ STA 3,Y
+ CLR 2,Y
+MNAA1 CLR 1,Y
+ LDA #$80
+ STA ,Y
+ RTS
+*
+*  make numerical atom ( Y )
+*
+MNAY LEAX ,Y
+MNAX LBSR NEW
+ STX 2,Y
+ BRA MNAA1
+***
+***  ( ATOMLENGTH atom ) SUBR
+***      val <= length of atom
+***
+ATOMLE CMPX #CELTOP
+ LBCC ZERO
+ LDX ,X
+ LEAX 7,X
+ LDY #0
+ATOML1 LDA ,X+
+ BEQ MNAY
+ LEAY 1,Y
+ BRA ATOML1
+***
+***  ( LENGTH list ) SUBR
+***      val <= length of list
+***
+LENGTH LDY #0
+LENGT1 LDA ,X
+ BMI MNAY
+ LDX 2,X
+ LEAY 1,Y
+ BRA LENGT1
+ 
+ 
+*--------------------------------------
+*
+*      ERRORS
+*
+*--------------------------------------
+*
+ERRM FCB CR,LF,BEL
+ FCC /--ERROR-- /,0
+*
+ERRSSK BSR ERR
+ FCC /S over/,0
+ERRUSK BSR ERR
+ FCC /U over/,0
+ERRGBC BSR ERR
+ FCC /Cell area over/,0
+ERRMSA BSR ERR
+ FCC /Atom area over/,0
+*
+ERR LBSR ERRS
+ PULS X
+ LBSR MSG
+ LBRA WARMS
+***
+***  ( ERROR e1 e2 ) SUBR
+***      print e1 e2, goto top level
+***
+ERROR LBSR ERRXY
+ FCB 0
+*
+ERRCAT LBSR ERRXY
+ FCC /Catch and Throw/,0
+ERRCAR BSR ERRXY
+ FCC /Car or Cdr of atom/,0
+ERRSET BSR ERRXY
+ FCC /Set/,0
+ERRPRG BSR ERRXY
+ FCC /Prog/,0
+ERRDE BSR ERRXY
+ FCC /Definition/,0
+ERRATM BSR ERRXY
+ FCC /Atom expected/,0
+ERRSTR BSR ERRXY
+ FCC /String expected/,0
+ERRUND BSR ERRXY
+ FCC /Undefined Function/,0
+ERRNUM BSR ERRXY
+ FCC /Number expected/,0
+ERRPUT BSR ERRXY
+ FCC /Put/,0
+*
+ERRXY PSHU X,Y
+ BSR ERRS
+ PULS X
+ BSR MSG
+ BSR TERPRI
+ PULU X
+ BSR PRINT
+ PULU X
+ BSR PRINT
+ LBRA WARMS
+*
+ERRS LBSR INITIO
+ LDX #ERRM
+ BRA MSG
+
+*--------------------------------------
+*
+*      OUTPUT
+*
+*--------------------------------------
+*
+*  print message
+*    X : top of message
+*
+MSG0 LBSR OUT
+MSG LDA ,X+
+ BNE MSG0
+ RTS
+***
+***  ( CRLF num(16) ) SUBR
+***      print crlfs
+***      val <= NIL
+***
+CRLF LBSR NUMX
+ LDX 2,X
+ BEQ PRIRTS
+CRLF1 BSR TERPRI
+ LEAX -1,X
+ BNE CRLF1
+ RTS
+***
+***  ( SPACES num(16) ) SUBR
+***      print blanks
+***      val <= NIL
+***
+SPACES LBSR NUMX
+ LDX 2,X
+ BEQ PRIRTS
+SPACE1 BSR BLANK
+ LEAX -1,X
+ BNE SPACE1
+PRIRTS RTS
+*
+*  print blank
+*
+BLANK LDA #' 
+ BRA OUT
+***
+***  ( PRIANT e ) SUBR
+***      print e, print crlf
+***      val <= e
+***
+PRINT PSHU X
+ BSR PRIN1
+ PULU Y
+***
+***  ( TERPRI ) SUBR
+***      print crlf
+***      val <= NIL
+***
+TERPRI LDA #CR
+ BSR OUT
+ LDA #LF
+ BRA OUT
+***
+***  ( LPRI e ) SUBR
+***      print e without top level "(" and ")"
+***      val <= NIL
+***
+LPRI0 BSR PRIN1
+ PULS X
+ LDX 2,X
+ LDA ,X
+ BMI LPRI1
+ BSR BLANK
+LPRI PSHS X
+ LDX ,X
+ BPL LPRI0
+ PULS X
+LPRI1 CMPX #NIL
+ BEQ PRIRTS
+ BSR BLANK
+ LDA #'.
+ BSR OUT
+ BSR BLANK
+***
+***  ( PRIN1 e ) SUBR
+***      print e
+***      val <= NIL
+***
+PRIN1 TESTS
+ CMPX #CELBTM
+ BCC PRIRTS
+ CMPX #CELTOP
+ BCC PRIN2
+ LDX ,X
+ BPL PRIRTS
+ LEAX 7,X
+ BRA MSG
+*
+PRIN2 TFR X,D
+ BITB #3
+ BNE PRIRTS
+ LDA ,X
+ BMI PRINN
+ LDA #'(
+ BSR OUT
+ BSR LPRI
+ LDA #')
+*
+*  output a char in A
+*
+OUT LBRA OUTPUT
+*
+*  print number ( decimal form )
+*
+PRINN LDA #-'0
+ PSHS A,Y
+ LDY #NY
+ LBSR NUMX
+ BPL PRINN1
+ LDA #'-
+ BSR OUT
+ LBSR NNEG
+PRINN1 LDD #10
+ STD 2,Y
+ CLRB
+ STD ,Y
+ LBSR DIV
+ LDA 3,Y
+ PSHS A
+ LDD 2,X
+ BNE PRINN1
+ LDD ,X
+ BNE PRINN1
+ BRA PRINN3
+*
+PRINN2 BSR OUT
+PRINN3 PULS A
+ ADDA #'0
+ BNE PRINN2
+ PULS Y,PC
+***
+***  ( TYO num(8) ) SUBR
+***      output ASCII character
+***      val <= NIL
+***
+TYO LBSR NUMX
+ LDA 3,X
+ BRA OUT
+***
+***  ( PRINH n ) SUBR
+***      print number ( hex form )
+***      val <= NIL
+***
+PRINH LBSR NUMX
+ LDA #'$
+ BSR OUT
+ LDD ,X
+ BSR PRINH4
+ LDD 2,X
+PRINH4 BSR PRINH2
+ TFR B,A
+PRINH2 PSHS A
+ RORA
+ RORA
+ RORA
+ RORA
+ BSR PRINH1
+ PULS A
+PRINH1 ANDA #$0F
+ ADDA #'0
+ CMPA #'9+1
+ BCS OUT
+ ADDA #7
+ BRA OUT
+
+*--------------------------------------
+*
+*      INPUT
+*
+*--------------------------------------
+***
+***  ( TYI ) SUBR
+***      read a char
+***      val <= ASCII code
+***
+TYI BSR IN
+ LBRA MNAA
+***
+***  ( READCH ) SUBR
+***      read a char
+***      val <= symbolic atom
+***
+READCH BSR IN
+ LBRA MSAA
+***
+***  ( GETCH ) SUBR
+***      read char, direct input
+***      val <= symbolic atom
+***
+GETCH LBSR INPUT
+ LBRA MSAA
+*
+*  read a line
+*
+GETLIN LDX prompt
+ LBSR PRIN1
+GETL1 LDX #IBF
+ STX IBFP
+GETL2 LBSR INPUT
+ CMPA #BS
+ BEQ GETL3
+ CMPA #CAN
+ BEQ GETL5
+ CMPA #CR
+ BEQ GETL6
+ CMPA #' 
+ BCS GETL2
+ STA ,X+
+ BSR EOUT
+ CMPX #IBF+IBFL
+ BNE GETL2
+ BRA IN1
+*
+GETL3 CMPX #IBF
+ BEQ GETL2
+ BSR EOUTBS
+ BRA GETL2
+*
+GETL4 BSR EOUTBS
+GETL5 CMPX #IBF
+ BNE GETL4
+ BRA GETL2
+*
+GETL6 STA ,X+
+ CLR ,X
+ TST ECHOSW
+ BNE IN1
+ LBSR TERPRI
+ BRA IN1
+*
+* output back space
+*
+EOUTBS LEAX -1,X
+ BSR EOUTB1
+ LDA #' 
+ BSR EOUT
+EOUTB1 LDA #BS
+*
+*  output a char
+*
+EOUT TST ECHOSW
+ LBEQ OUT
+ RTS
+*
+*  read a char in A
+*
+IN LDA OLDCHR
+ BNE IN2
+IN1 LDX IBFP
+ LDA ,X+
+ BEQ GETLIN
+ STX IBFP
+IN2 CLR OLDCHR
+ RTS
+*
+*  skip blank ( cntr ) chars, char in A
+*
+SKIP0 BSR IN
+ CMPA #';
+ BEQ SKIP
+ CMPA #CR
+ BNE SKIP0
+SKIP BSR IN
+ CMPA #' +1
+ BCS SKIP
+ CMPA #';
+ BEQ SKIP0
+ RTS
+***
+***  ( READ ) SUBR
+***      read a expression
+***      val <= expression
+***
+READ TESTS
+ TESTU
+ LBSR CLRABF
+ BSR SKIP
+ CMPA #')
+ BEQ READ
+ CMPA #']
+ BEQ READ
+ CMPA #'(
+ BEQ READR
+ CMPA #'[
+ BEQ READG
+ CMPA #'"
+ LBEQ READS
+ CMPA #''
+ BNE READA
+*
+*  read quate
+*
+ BSR READ
+ LBSR CONSN
+ LDX #QUOTE
+ LBRA CONS
+*
+*  read right part
+*
+READG BSR READR
+ LDA OLDCHR
+ CMPA #']
+ BEQ IN2
+ RTS
+*
+READR BSR SKIP
+ LDY #NIL
+ CMPA #')
+ BEQ REDRTS
+ CMPA #']
+ BEQ READR3
+ CMPA #'.
+ BEQ READR1
+ STA OLDCHR
+ BSR READ
+ PSHU Y
+ BSR READR
+ LBRA CONSU
+*
+READR1 BSR READ
+READR2 BSR SKIP
+ CMPA #')
+ BEQ REDRTS
+ CMPA #']
+ BNE READR2
+READR3 STA OLDCHR
+REDRTS RTS
+*
+*  read atom
+*
+READA0 LBSR STOREA
+ LBSR IN
+READA CMPA #' +1
+ BCS READA1
+ CMPA #'(
+ BEQ READA1
+ CMPA #'[
+ BEQ READA1
+ CMPA #')
+ BEQ READA1
+ CMPA #']
+ BNE READA0
+READA1 STA OLDCHR
+*
+*  make atom ( input is number ??? )
+*
+MATM LDX #NX
+ LDD #0
+ STD 2,X
+ STD ,X
+ CLR NSIGN
+ LDY #ABF
+ LDA ,Y+
+ CMPA #'+
+ BEQ MATM1
+ CMPA #'-
+ BNE MATM2
+ INC NSIGN
+MATM1 LDA ,Y+
+MATM2 CMPA #'$
+ BNE MATM4
+*
+*  make hex number
+*
+ LDA ,Y+
+MATM3 BSR TSTHEX
+ LBCC MSA
+ LBSR NASL4
+ ADDA 3,X
+ STA 3,X
+ LDA ,Y+
+ BNE MATM3
+ BRA MATM5
+*
+*  make decimal number
+*
+MATM4 BSR TSTDEC
+ LBCC MSA
+ BSR N10A
+ LDA ,Y+
+ BNE MATM4
+*
+MATM5 LDA NSIGN
+ LBEQ MNA
+ LBRA MINUS1
+*
+*  char in ( 0..9, A..F ) ???
+*
+TSTHEX CMPA #'A
+ BCS TSTDEC
+ CMPA #'G
+ BCC TSTRTS
+ ADDA #10-'A
+ RTS
+*
+*  char in ( 0..9 ) ???
+*
+TSTDEC SUBA #'0
+ BCS TSTCLC
+ CMPA #10
+ RTS
+*
+TSTCLC CLC
+TSTRTS RTS
+*
+*  NX <= NX * 10 + A
+*
+N10A PSHU A
+ BSR N10
+ LDD #0
+ PSHS D
+ PULU B
+ BRA N10A1
+*
+N10 LBSR NASL
+ LDD ,X
+ PSHS D
+ LDD 2,X
+ LBSR NASL2
+N10A1 ADDD 2,X
+ STD 2,X
+ PULS D
+ ADCB 1,X
+ ADCA ,X
+ STD ,X
+ RTS
+*
+*  read string
+*
+READS0 BSR STOREA
+READS LBSR IN
+ CMPA #CR
+ LBEQ MSA
+ CMPA #'"
+ BNE READS0
+ LBSR IN
+ CMPA #'"
+ BEQ READS0
+ STA OLDCHR
+ LBRA MSA
+*
+*  compute string address
+*
+STRING CMPX #CELTOP
+ LBCC ERRSTR
+ LDX ,X
+ LEAX 7,X
+ RTS
+*
+*  clear atom buffer
+*
+CLRABF PSHS X
+ LDX #ABF
+ STX ABFP
+ CLR ,X
+ PULS X,PC
+*
+*  store a char into Atom buffer
+*
+STOREA PSHS X
+ LDX ABFP
+ STA ,X+
+ CMPX #ABF+ABFL
+ BEQ STORE1
+ STX ABFP
+ CLR ,X
+STORE1 PULS X,PC
+*
+*  store chars into atom buffer
+*    X : POINTER
+*
+STORE0 BSR STOREA
+STORES LDA ,X+
+ BNE STORE0
+ RTS
+***
+***  ( IMPLODE list_of _atom ) SUBR
+***      val <= connected atom
+***
+***
+***  ( CONCAT atom1 atoM2 ... ) LSUBR
+***      val <= connected atom
+***
+CONCAT EQU *
+IMPLOD BSR CLRABF
+IMPLD1 PSHU X
+ LDX ,X
+ BMI IMPLD2
+ BSR STRING
+ BSR STORES
+ PULU X
+ LDX 2,X
+ BRA IMPLD1
+IMPLD2 LEAU 2,U
+ BRA MSA
+***
+***  ( EXPLODE atom ) SUBR
+***      val <= list of chars
+***
+EXPLOD LDD #MSAA
+ BRA EXPL1
+***
+***  ( EXPLODEN atom ) SUBR
+***      val <= list of ascii codes
+***
+EXPLN LDD #MNAA
+EXPL1 STD OP
+ BSR STRING
+ TESTU
+ TESTS
+EXPL2 LDA ,X+
+ LBEQ FALSE
+ PSHS X
+ JSR [OP]
+ PULS X
+ PSHU Y
+ BSR EXPL2
+ LBRA CONSU
+***
+*** ( ATOMCDR atom ) SUBR
+***      val <= butfirst chars of atom
+***
+ATOMCD BSR STRING
+ BSR CLRABF
+ LDA ,X+
+ BEQ MSA
+ BSR STORES
+ BRA MSA
+***
+***  ( ATOMCAR atom ) SUBR
+***      val <= first char of atom
+***
+ATOMCA LBSR STRING
+ LDA ,X
+*
+*  make single char atom (A )
+*
+MSAA LBSR CLRABF
+ BSR STOREA
+*
+*  make symbolic atom
+*
+MSA LDX #ABF
+ LDD #0
+MSA1 TST ,X
+ BEQ MSA2
+ LSRA
+ RORB
+ LSRA
+ RORB
+ LSRA
+ RORB
+ EORA ,X+
+ BRA MSA1
+*
+MSA4 PULS D
+ ADDD #2
+MSA2 ANDA #$07
+ ANDB #$FE
+ ADDD #HSHTOP
+ PSHS D
+ LDY #ABF
+ LDX [,S]
+ BEQ MSA5
+ LEAX 7,X
+MSA3 LDA ,X+
+ CMPA ,Y+
+ BNE MSA4
+ TSTA
+ BNE MSA3
+ PULS Y,PC
+*
+*  create new atom
+*
+MSA5 LEAX -10,U
+ PSHS X
+ LDX ATMEND
+ LDD #UNDEFI
+ STD ,X++
+ LDD #NIL
+ STD ,X++
+ LDD #ERRUND
+ STD ,X++
+ CLR ,X+
+MSA6 CMPX ,S
+ LBCC ERRMSA
+ LDA ,Y+
+ STA ,X+
+ BNE MSA6
+ LDD ATMEND
+ STD [2,S]
+ STX ATMEND
+ LEAX 30,X
+ STX USKTOP
+ TESTU
+ PULS D,Y,PC
+***
+***  ( ASCII n ) SUBR
+***      val <= syumbolic atom
+***
+ASCII LBSR NUMX
+ LDA 3,X
+ LBRA MSAA
+***
+***  ( GENSYM [atom] ) SUBR
+***      generate symbolic atom
+***      val <= atom
+***
+GENSYM LBSR CLRABF
+ CMPX #NIL
+ BNE GENSY0
+ LDA #'G
+ LBSR STOREA
+ BRA GENSY1
+GENSY0 LBSR STRING
+ LBSR STORES
+GENSY1 LDX #GBUF+4
+GENSY2 INC ,-X
+ LDA ,X
+ CMPA #'9+1
+ BNE GENSY3
+ LDA #'0
+ STA ,X
+ BRA GENSY2
+GENSY3 LDX #GBUF
+ LBSR STORES
+ LBRA MSA
+
+
+*--------------------------------------
+*
+*      EVALUATION
+*
+*--------------------------------------
+*
+*    EVAL - FSUBR
+*
+EVFSBR LDX 2,X
+ LDY #NIL
+ RTS
+*
+*    EVAL - MACRO
+*
+EVMACR LDY 2,X
+EVMAC1 PULS X
+ BSR EVALL1
+ LEAX ,Y
+***
+***  ( EVAL e ) SUBR
+***      val <= value of e
+***
+EVAL TESTS
+ TESTU
+ LDY ,X
+ BPL EVAL3
+ CMPX #CELTOP
+ BCC EVAL1
+ LDY ,Y
+ RTS
+EVAL1 LEAY ,X
+ RTS
+EVAL2 LEAS 2,S
+ LDY ,Y
+EVAL3 CMPY #CELTOP
+ BCC EVALL
+ LDY ,Y
+ LDD 4,Y
+ PSHS D
+ LDA 6,Y
+ BEQ EVAL2
+ CMPA #NSUBR
+ BEQ EVSUBR
+ CMPA #NFSUBR
+ BEQ EVFSBR
+ CMPA #NLSUBR
+ BEQ EVLSBR
+ CMPA #NEXPR
+ BEQ EVEXPR
+ CMPA #NFEXPR
+ LBEQ EVFEXP
+ CMPA #NMACRO
+ BEQ EVMACR
+EVAL9 LBRA ERRUND
+*
+*    EVAL - LAMBDA
+*
+EVALL PSHU Y
+ LDD ,Y
+ CMPD #LAMBDA
+ BNE EVAL9
+ BSR EVLIS
+ PULU X
+EVALL2 LDX 2,X
+EVALL1 PSHS X
+ LDX ,X
+ BRA EVEXP2
+***
+***  ( EVLIS list ) SUBR
+***      evaluate each element of list
+***      val <= list of values
+***
+EVLIS LDX 2,X
+ PSHU X
+ LDX ,X
+ BMI EVLIS1
+ BSR EVAL
+ LDX ,U
+ STY ,U
+ LDX 2,X
+ PSHU X
+ LDX ,X
+ LBMI CONSUU
+ LBSR EVAL
+ LDX ,U
+ STY ,U
+ BSR EVLIS
+ LBSR CONSU
+ LBRA CONSU
+EVLIS1 PULU Y
+ RTS
+*
+*   EVAL - SUBR
+*
+EVSUBR LDX 2,X
+ PSHU X
+ LDX ,X
+ BMI EVSBR1
+ LBSR EVAL
+ LDX ,U
+ STY ,U
+ LDX [2,X]
+ BMI EVSBR1
+ LBSR EVAL
+ PULU X
+ RTS
+EVSBR1 PULU X
+ LDY #NIL
+ RTS
+*
+*    EVAL - LSBUR
+*
+EVLSBR BSR EVLIS
+EVLSB1 LEAX ,Y
+ LDY #NIL
+ RTS
+*
+*    EVAL - EXPR
+*
+EVEXPR BSR EVLIS
+EVEXP1 LDX [,S]
+EVEXP2 BMI EVAL9
+ BSR BIND
+ PULS X
+ BSR EVBODY
+ BRA UNBIND
+*
+*    EVAL - FEXPR
+*
+EVFEXP LDY 2,X
+ BRA EVEXP1
+*
+*  bind varables
+*    X : variable(s)
+*    Y : argument(s)
+*
+BIND LDD #NIL
+ PSHU D
+BIND1 TESTU
+ PSHS X,Y
+ LDX ,X
+ BMI BINDA0
+ LDY ,Y
+ BMI BIND2
+ BSR BINDA
+ PULS X,Y
+ LDX 2,X
+ LDY 2,Y
+ BRA BIND1
+BIND2 LDY #NIL
+ BSR BINDA
+ PULS X,Y
+ LDX 2,X
+ BRA BIND1
+*
+*  bind atom
+*
+BINDA0 PULS X,Y
+BINDA CMPX #CELTOP
+ BCC BINRTS
+ CMPX #NIL
+ BEQ BINRTS
+ LDX ,X
+ LDD ,X
+ PSHU D
+ PSHU X
+ STY ,X
+BINRTS RTS
+*
+*  unbind variables
+*
+UNBIN0 PULU D
+ STD ,X
+UNBIND LDX ,U++
+ BMI UNBIN0
+ RTS
+***
+***  ( EVBODY list ) SUBR
+***      evaluate each element of list
+***      val <= last element
+***
+EVBOD0 LBSR EVAL
+ PULU X
+EVBODY LDX 2,X
+ PSHU X
+ LDX ,X
+ BPL EVBOD0
+EVBOD1 PULU X
+ RTS
+***
+***  ( COND clause1 clause2 ... ) FSUBR
+***      val <= result or NIL
+***
+COND0 PULU X
+ LDX 2,X
+COND PSHU X
+ LDX ,X
+ BMI EVBOD1
+ LDX ,X
+ BMI COND0
+ LBSR EVAL
+ CMPY #NIL
+ BEQ COND0
+ LDX [,U++]
+ BRA EVBODY
+***
+***  ( MAPCAR fn list ) SUBR
+***      val <= list of values
+***
+MAPCAR PSHU X,Y
+ LDX ,Y
+ BMI MAPCA1
+ LBSR CONSN1
+ LDX ,U
+ BSR APPLY
+ TFR Y,D
+ PULU X,Y
+ LDY 2,Y
+ PSHU D
+ BSR MAPCAR
+ LBRA CONSU
+*
+MAPCA1 PULU X,Y
+ RTS
+***
+***  ( MAPCAN fn list ) SUBR
+***      val <= appended list of values
+***
+MAPCAN PSHU X,Y
+ LDX ,Y
+ BMI MAPCA1
+ LBSR CONSN1
+ LDX ,U
+ BSR APPLY
+ TFR Y,D
+ PULU X,Y
+ LDY 2,Y
+ PSHU D
+ BSR MAPCAN
+ PULU X
+ LBRA APPXY
+***
+***  ( MAPC fn list ) SUBR
+***      val <= NIL
+***
+MAPC PSHU X,Y
+MAPC1 LDX ,Y
+ BMI MAPCA1
+ LBSR CONSN1
+ LDX ,U
+ BSR APPLY
+ LDY 2,U
+ LDY 2,Y
+ STY 2,U
+ BRA MAPC1
+***
+***  ( FUNCALL fn arg! ... ) LSUBR
+***      evaluate function
+***      val <= value of function
+***
+FUNCALL LDY 2,X
+ LDX ,X
+ BPL APPLY
+ LBRA ERROR
+***
+***  ( APPLY fn list ) SUBR
+***      evaluate function, argument are list
+***      val <= value of function
+***
+APPLY0 LEAS 2,S
+ LDX ,X
+APPLY TESTS
+ TESTU
+ CMPX #CELTOP
+ BCC APPLYL
+ LDX ,X
+ LDD 4,X
+ PSHS D
+ LDA 6,X
+ BEQ APPLY0
+ CMPA #NSUBR
+ BEQ APSUBR
+ CMPA #NFSUBR
+ LBEQ EVLSB1
+ CMPA #NLSUBR
+ LBEQ EVLSB1
+ CMPA #NEXPR
+ LBEQ EVEXP1
+ CMPA #NFEXPR
+ LBEQ EVEXP1
+ CMPA #NMACRO
+ BEQ APMACR
+ LBRA ERRUND
+*
+*    APPLY - SUBR
+*
+APSUBR LDX ,Y
+ BMI APSUB1
+ LDY [2,Y]
+ BMI APSUB2
+ RTS
+APSUB1 LDX #NIL
+APSUB2 LDY #NIL
+ RTS
+*
+*    APPLY - MACRO
+*
+APMACR LBSR CONS
+ LBRA EVMAC1
+*
+*    APPLY - LAMBDA
+*
+APPLYL LDD ,X
+ CMPD #LAMBDA
+ LBNE ERRUND
+ LBRA EVALL2
+
+
+*--------------------------------------
+*
+*      PROPERTY
+*
+*--------------------------------------
+***
+***  ( DEFUN 'fn ['type] 'args 'body ) FSUBR
+***      define function
+***      val <= fn
+***
+DEFUN LDY ,X
+ LDX 2,X
+ LDD ,X
+ CMPD #EXPR
+ BEQ DE1
+ CMPD #FEXPR
+ BEQ DF1
+ CMPD #MACRO
+ BEQ DM1
+ LDA #NEXPR
+ BRA DE3
+***
+***  ( DE 'fn 'args 'body ) FSUBR
+***      define EXPR function
+***      val <= fn
+***
+DE LDY ,X
+DE1 LDA #NEXPR
+DE2 LDX 2,X
+DE3 CMPY #CELTOP
+ LBCC ERRDE
+ PSHS Y
+ LDY ,Y
+ STA 6,Y
+ STX 4,Y
+ PULS Y,PC
+***
+***  ( DF 'fn 'args 'body ) FSUBR
+***      define FEXPR function
+***      val <= fn
+***
+DF LDY ,X
+DF1 LDA #NFEXPR
+ BRA DE2
+***
+***  ( DM 'fn 'args 'body ) FSUBR
+***      define MACRO function
+***      val <= fn
+***
+DM LDY ,X
+DM1 LDA #NMACRO
+ BRA DE2
+***
+***  ( SET atom value ) SUBR
+***      give value to symbolic atom
+***      val <= value
+***
+SET CMPX #CELTOP
+ BCC SET9
+ CMPX #NIL
+ BEQ SET9
+ CMPX #T
+ BEQ SET9
+ STY [,X]
+ RTS
+***
+***  ( SETQ 'atom1 value1 ... ) FSUBR
+***      val <= last value
+***
+SETQ0 LDX [2,X]
+ BMI SET9
+ LBSR EVAL
+ LDX [,U]
+ BSR SET
+ PULU X
+ LDX 2,X
+ LDX 2,X
+SETQ PSHU X
+ LDA ,X
+ BPL SETQ0
+SETQ1 LEAU 2,U
+ RTS
+***
+***  ( SETQQ 'atom1 'value1 ... ) FSUBR
+***      val <= last value
+***
+SETQQ0 LDX ,X
+ BSR SET
+ PULU X
+ LDX 2,X
+ LDX 2,X
+SETQQ PSHU X
+ LDA ,X
+ BMI SETQ1
+ LDY [2,X]
+ BPL SETQQ0
+SET9 LBRA ERRSET
+***
+***  ( FVALUE atom ) SUBR
+***      val <= function values of atom ( list or number )
+***
+FVALUE CMPX #CELTOP
+ LBCC ERRATM
+ LDX ,X
+ LDY 4,X
+ LDA 6,X
+ LDX #EXPR
+ CMPA #NEXPR
+ LBCS MNAY
+ BEQ FVALU1
+ LDX #FEXPR
+ CMPA #NFEXPR
+ BEQ FVALU1
+ LDX #MACRO
+FVALU1 LBRA CONS
+***
+***  ( PROPLIST atom ) SUBR
+***      val <= p-list of atom
+***
+PROPLI CMPX #CELTOP
+ LBCC ERRATM
+ LDX ,X
+ LDY 2,X
+ RTS
+***
+***  ( GET atom ind ) SUBR
+***      get property of symbolic atom
+***      val <= property or NIL
+***
+GET CMPX #CELTOP
+ LBCC ERRATM
+ LDX ,X
+ LDX 2,X
+ EXG X,Y
+ LBSR ASSOC
+ CMPY #NIL
+ BEQ ERMRTS
+ LDY 2,Y
+ RTS
+***
+***  ( PUT atom ind e ) LSUBR
+***      add property
+***      val <= e
+***
+PUT LDY ,X
+PUTERR LBMI ERRPUT
+ LDX 2,X
+ LDD ,X
+ BMI PUTERR
+ LDX 2,X
+ LDX ,X
+ BMI PUTERR
+ CMPY #CELTOP
+ LBCC ERRATM
+ LDY ,Y
+ LEAY 2,Y
+ PSHS X,Y
+ LDY ,Y
+ TFR D,X
+ LBSR ASSOC
+ CMPY #NIL
+ BEQ PUT1
+ PULS X
+ STX 2,Y
+ LEAY ,X
+ PULS D,PC
+*
+PUT1 LDY ,S
+ LBSR CONS
+ LEAX ,Y
+ LDY [2,S]
+ LBSR CONS
+ STY [2,S]
+ LDY ,S
+ PULS D,X,PC
+***
+***  ( CARMODE e ) SUBR
+***      if e = NIL then disable (CAR atom)
+***                 else enable
+***      val <= NIL
+***
+CARMOD CLR CARSW
+ CMPX #NIL
+ BNE ERMRTS
+ INC CARSW
+ERMRTS RTS
+***
+***  ( GBCMODE e ) SUBR
+***      if e = NIL then disable message
+***                 else enable
+***      val <= NIL
+***
+GBCMODE CLR GBCSW
+ CMPX #NIL
+ BEQ ERMRTS
+ INC GBCSW
+ RTS
+***
+***  ( ECHOMODE e ) SUBR
+***      if e = NIL then disable echoback
+***                 else enable
+***      val <= NIL
+***
+ECHOMO CLR ECHOSW
+ CMPX #NIL
+ BNE ERMRTS
+ INC ECHOSW
+ RTS
+
+
+*--------------------------------------
+*
+*      PROG AND LOOP
+*
+*--------------------------------------
+***
+***  ( PROG 'args 'body ) FSUBR
+***      val <= value of RETURN or NIL
+***
+PROG PSHS X
+ LDX ,X
+PROG9 LBMI ERRPRG
+ LBSR BIND
+ PULS X
+ PSHU X
+ BSR PROGS
+PRG1 CLR RTNSW
+ LEAU 2,U
+ LBRA UNBIND
+***
+***  ( LOOP 'args 'body ) FSUBR
+***      val <= value of RETURN
+***
+LOOP PSHS X
+ LDX ,X
+ BMI PROG9
+ LBSR BIND
+ PULS X
+ PSHU X
+LOOP1 LDX ,U
+ BSR PROGS
+ LDA RTNSW
+ BEQ LOOP1
+ BRA PRG1
+*
+*
+*
+PROGS LDX 2,X
+ PSHU X
+ LDX ,X
+ BMI PROGS2
+ LBSR EVAL
+ PULU X
+ LDA RTNSW
+ BNE PRGRTS
+ LDA GOSW
+ BEQ PROGS
+ CLR GOSW
+ LDX ,U
+PROGS1 LDX 2,X
+ LDA ,X
+ BMI PROG9
+ CMPY ,X
+ BNE PROGS1
+ BRA PROGS
+PROGS2 PULU Y
+PRGRTS RTS
+***
+***  ( GO 'label ) FSUBR
+***      val <= label
+***
+GO INC GOSW
+ LDY ,X
+ BMI PROG9
+ RTS
+***
+***  ( RETURN value ) SUBR
+***      val <= value
+***
+RETURN INC RTNSW
+ LEAY ,X
+ RTS
+***
+***  ( PROGN e1 e2 ... ) LSUBR
+***      val <= last e
+***
+PROGN0 LDY ,X
+ LDX 2,X
+PROGN LDA ,X
+ BPL PROGN0
+ RTS
+***
+***  ( PROG1 e1 e2 ... ) LSUBR
+***      val <= e1
+***
+PROG1 EQU CAR
+***
+***  ( PROG2 e1 e2 ... ) LSUBR
+***      val <= e2
+***
+PROG2 EQU CADR
+***
+***  ( CATCH e1 'tag ) FSUBR
+***      val <= value of e1 or THROWed value
+***
+CATCH PSHS U
+ PSHU X
+ LEAX ,S
+ LBSR MNAX
+ LEAX ,Y
+ LDY CATCHL
+ LBSR CONS
+ LDX ,U
+ LDA ,X
+ BMI CATERR
+ LDX [2,X]
+ BMI CATERR
+ LBSR CONS
+ STY CATCHL
+ LDX [,U++]
+ LBSR EVAL
+ LDX CATCHL
+ LDX 2,X
+ LDX 2,X
+ STX CATCHL
+CATCH1 PULS U,PC
+***
+***  ( THROW value 'tag ) FSUBR
+***      val <= value
+***
+THROW PSHU X
+ LDX ,X
+ BMI CATERR
+ LBSR EVAL
+ LDX ,U
+ STY ,U
+ LDX [2,X]
+ BMI CATERR
+ LDY CATCHL
+ LBSR MEMBER
+CATERR LBNE ERRCAT
+ LDX 2,Y
+ LDY 2,X
+ STY CATCHL
+ LDX ,X
+ LEAS [2,X]
+ PULU Y
+THROW1 CMPU ,S
+ BEQ CATCH1
+ LBSR UNBIND
+ BRA THROW1
+
+
+*--------------------------------------
+*
+*      PREDICATES
+*
+*--------------------------------------
+***
+***  ( ALPHORDER atom1 atom2 ) SUBR
+***      val <= T or NIL
+***
+ALPHOR LBSR STRING
+ EXG X,Y
+ LBSR STRING
+ALPHO1 LDA ,X+
+ CMPA ,Y+
+ BCS FALSE
+ BNE TRUE
+ TSTA
+ BNE ALPHO1
+ BRA TRUE
+***
+***  ( GREATERP n1 n2 ) SUBR
+***      n1 > n2 ???
+***      val <= T or NIL
+***
+GREATE EXG X,Y
+***
+***  ( LESSP n1 n2 ) SUBR
+***      n1 < n2 ???
+***      val <= T or NIL
+***
+LESSP LBSR NUMXY
+ LBSR NCMP
+ BGE FALSE
+ BRA TRUE
+***
+***  ( SYMBOLP e ) SUBR
+***      e is symbol ???
+***      val <= T or NIL
+***
+SYMBOL CMPX #CELTOP
+ BCC FALSE
+ BRA TRUE
+***
+***  ( NUMBERP e ) SUBR
+***      e is number ???
+***      val <= T or NIL
+***+
+NUMBER CMPX #CELTOP
+ BCS FALSE
+***
+***  ( ATOM e ) SUBR
+***      e is atom ???
+***      val <= T or NIL
+***
+ATOM LDA ,X
+ BPL FALSE
+ BRA TRUE
+***
+***  ( LSITP e ) SUBR
+***      e Is list ???
+***      val <= T or NIL
+***
+LISTP LDA ,X
+ BPL TRUE
+ BRA FALSE
+***
+***  ( EQ e1 e2 ) SUBR
+***      e1 = e2 ???
+***      val <= T or NIL
+***
+EQ PSHU Y
+ CMPX ,U++
+ BNE FALSE
+TRUE LDY #T
+ RTS
+***
+***  ( NULL e ) SUBR
+***  ( NOT e ) SUBR
+***      e is NIL ???
+***      val <= T or NIL
+***
+NULL EQU *
+NOT CMPX #NIL
+ BEQ TRUE
+FALSE LDY #NIL
+ RTS
+***
+***  ( PLUSP e ) SUBR
+***      e >= 0 ???
+***      val <= T or NIL
+***
+PLUSP CMPX #CELTOP
+ BCS FALSE
+ LDA ,X
+ BPL FALSE
+ BITA #$40
+ BEQ TRUE
+ BRA FALSE
+***
+***  ( MINUSP e ) SUBR
+***      e < 0 ???
+***      val <= T or NIL
+***
+MINUSP CMPX #CELTOP
+ BCS FALSE
+ LDA ,X
+ BPL FALSE
+ BITA #$40
+ BNE TRUE
+ BRA FALSE
+***
+***  ( oneP e ) SUBR
+***      e = 1 ???
+***
+ONEP LDD 2,X
+ CMPD #1
+ONEP1 BNE FALSE
+ CMPX #CELTOP
+ BCS FALSE
+ LDD ,X
+ CMPD #$8000
+ BEQ TRUE
+ BRA FALSE
+***
+***  ( ZEROP e ) SUBR
+***      e = 0 ???
+***      val <= T or NIL
+***
+ZEROP LDD 2,X
+ BRA ONEP1
+***
+***  ( EQUAL e1 e2 ) SUBR
+***      compare e1 with e2
+***      val <= T or NIL
+***      zero flag is set ( T )
+***
+EQUAL0 TESTS
+ BSR EQUAL
+ BNE EQUAL2
+ PULS X,Y
+ LDX 2,X
+ LDY 2,Y
+EQUAL PSHS X,Y
+ LDX ,X
+ BMI EQUAL3
+ LDY ,Y
+ BPL EQUAL0
+EQUAL1 LDY #NIL
+EQUAL2 LEAS 4,S
+ RTS
+*
+EQUAL3 CMPX ,Y
+ BNE EQUAL1
+ LDX ,S
+ LDX 2,X
+ CMPX 2,Y
+ BNE EQUAL1
+ LDY #T
+ CLRA
+ LEAS 4,S
+ RTS
+***
+***  ( MEMBER e list ) SUBR
+***      e is top listevel element of 1 ???
+***      val <= sublist or NIL
+***
+MEMBE0 LDY 2,Y
+MEMBER PSHS X,Y
+ LDY ,Y
+ BMI EQUAL1
+ BSR EQUAL
+ PULS X,Y
+ BNE MEMBE0
+ RTS
+***
+***  ( ASSOC e a-list ) SUBR
+***      search e
+***      val <= element or NIL
+***
+ASSOC0 LDY 2,Y
+ASSOC PSHS X,Y
+ LDY ,Y
+ BMI EQUAL1
+ LDY ,Y
+ BMI ASSOC1
+ BSR EQUAL
+ASSOC1 PULS X,Y
+ BNE ASSOC0
+ LDY ,Y
+ RTS
+***
+***  ( MEMQ obj list ) SUBR
+***      obj is top level element of list ???
+***      ( uses EQ instead of EQUAL )
+***      val <= sublist or NIL
+***
+MEMQ0 LDY 2,Y
+MEMQ CMPX ,Y
+ BEQ MEMRTS
+ LDA ,Y
+ BPL MEMQ0
+MEMRTS RTS
+***
+***  ( ASSQ obj a-list ) SUBR
+***      search obj
+***      ( uses EQ instead of EQUAL )
+***      val <= element or NIL
+***
+ASSQ0 PULS Y
+ LDY 2,Y
+ASSQ PSHS Y
+ LDY ,Y
+ BMI ASSQ1
+ CMPX ,Y
+ BNE ASSQ0
+ PULS X,PC
+ASSQ1 PULS Y,PC
+
+
+*--------------------------------------
+*
+*      LIST FUNCTIONS
+*
+*--------------------------------------
+***
+***  ( C..R e ) SUBR
+***  ( C..R e )  "
+***  ( CAR e )   "
+***  ( CDR e )   "
+***
+CAAAR BSR CARX
+ BRA CAAR
+CAADR BSR CDRX
+CAAR BSR CARX
+ BRA CAR
+CADAR BSR CARX
+ BRA CADR
+CADDR BSR CDRX
+CADR BSR CDRX
+CAR LDY ,X
+ BPL CARRTS
+CARERR LDA CARSW
+ LBNE ERRCAR
+ LDX #NIL
+ LEAY ,X
+ RTS
+*
+CARX LDX ,X
+ BMI CARERR
+CARRTS RTS
+*
+CDRX LDA ,X
+ BMI CARERR
+ LDX 2,X
+ RTS
+*
+CDAAR BSR CARX
+ BRA CDAR
+CDADR BSR CDRX
+CDAR BSR CARX
+ BRA CDR
+CDDAR BSR CARX
+ BRA CDDR
+CDDDR BSR CDRX
+CDDR BSR CDRX
+CDR LDA ,X
+ BMI CARERR
+ LDY 2,X
+ RTS
+***
+***  ( LAST list ) SUBR
+***      val <= list of last element of list
+***
+LAST0 LEAY ,X
+ LDX 2,X
+LAST LDA ,X
+ BPL LAST0
+ RTS
+***
+***  ( REVERSE list ) SUBR
+***      val <= reversed list
+***
+REVER0 LBSR CONS
+ PULU X
+ LDX 2,X
+REVERS PSHU X
+ LDX ,X
+ BPL REVER0
+ LEAU 2,U
+ RTS
+***
+***  ( COPY e ) SUBR
+***      val <= copy of e
+***
+COPY TESTS
+ TESTU
+ PSHU X
+ LDX ,X
+ BMI COPY1
+ BSR COPY
+ LDX ,U
+ STY ,U
+ LDX 2,X
+ BSR COPY
+ LBRA CONSU
+COPY1 PULU Y
+CPYRTS RTS
+***
+***  ( APPEND 11 12 ... ) LSUBR
+***      val <= connected list
+***
+APPEND LDD ,X
+ BMI CPYRTS
+APPEN1 PSHU D
+ LDX 2,X
+ LDD ,X
+ BMI COPY1
+ TESTU
+ TESTS
+ BSR APPEN1
+ PULU X
+*
+*  append X to Y
+*
+APPXY LDD ,X
+ BMI CPYRTS
+ PSHU D
+ LDX 2,X
+ TESTS
+ TESTU
+ BSR APPXY
+ LBRA CONSU
+***
+***  ( NCONC 11 12 ... ) LSUBR
+***      val <= append list, use RPLACD
+***
+NCONC LDD ,X
+ BMI CPYRTS
+NCONC1 PSHS D
+ LDX 2,X
+ LDD ,X
+ BMI NCONC4
+ TESTS
+ BSR NCONC1
+ LDX ,S
+ LDA ,X
+ BMI NCONC5
+NCONC2 LDA [2,X]
+ BMI NCONC3
+ LDX 2,X
+ BRA NCONC2
+NCONC3 STY 2,X
+NCONC4 PULS Y,PC
+NCONC5 PULS D,PC
+***
+***  ( AND 'e1 'e2 ... ) FSUBR
+***      search NIL
+***      val <= NIL or last e
+***
+AND LDY #T
+AND1 PSHU X
+ LDX ,X
+ BMI OR1
+ LBSR EVAL
+ CMPY #NIL
+ BEQ OR1
+ PULU X
+ LDX 2,X
+ BRA AND1
+***
+***  ( OR 'e1 'e2 ... ) FSUBR
+***      search non-NIL
+***      val <= non-NIL or NIL
+***
+OR0 LBSR EVAL
+ CMPY #NIL
+ BNE OR1
+ PULU X
+ LDX 2,X
+OR PSHU X
+ LDX ,X
+ BPL OR0
+OR1 LEAU 2,U
+ RTS
+***
+***  ( RPLACA l e ) SUBR
+***      replace car of l with e
+***      val <= 1
+***
+RPLACA LDA ,X
+ LBMI ERROR
+ STY ,X
+ LEAY ,X
+ RTS
+***
+***  ( RPLACD l e ) SUBR
+***      replace cdr of l with e
+***      val <= l
+***
+RPLACD LDA ,X
+ LBMI ERROR
+ STY 2,X
+ LEAY ,X
+ RTS
+***
+***  ( LIST e1 e2 ... ) LSUBR
+***      val <= list of e1 ...
+***
+LIST EQU EVAL1
+***
+***  ( DBLIST ) SUBR
+***      val <= list of atoms
+***
+OBLIST LDY #NIL
+ LDX #HSHTOP
+OBLIS1 PSHS X
+ LDD ,X
+ BEQ OBLIS2
+ LBSR CONS
+OBLIS2 PULS X
+ LEAX 2,X
+ CMPX #HSHBTM
+ BNE OBLIS1
+ RTS
+***
+***  ( POP 'var ) FSUBR
+***      (PROG1 (CAR var) (SETQ var (CDR var)))
+***
+POP LDX ,X
+ CMPX #CELTOP
+ LBCC ERROR
+ LDX ,X
+ LDY ,X
+ LDD 2,Y
+ LDY ,Y
+ LBMI ERRCAR
+ STD ,X
+ RTS
+***
+***  ( PUSH item 'var ) FSUBR
+***      (SETQ var (CONS item var))
+***
+PUSH PSHU X
+ LDX ,X
+ LBMI ERROR
+ LBSR EVAL
+ PULU X
+ LDX [2,X]
+ CMPX #CELTOP
+ LBCC ERROR
+ LDX ,X
+ PSHS X
+ LDX ,X
+ EXG X,Y
+ BSR CONS
+ STY [,S++]
+ RTS
+
+
+*--------------------------------------
+*
+*      GARBAGE COLLECTION
+*
+*--------------------------------------
+***
+***  ( CONS e1 e2 ) SUBR
+***      val <= list
+***
+CONS PSHU X
+CONSU PSHU Y
+CONSUU BSR NEW
+ PULU D
+ STD 2,Y
+ PULU D
+ STD ,Y
+ RTS
+*
+CONSN LEAX ,Y
+CONSN1 LDY #NIL
+ BRA CONS
+*
+*  get a free cell ( address in Y )
+*
+NEW0 PSHS X
+ BSR GBC
+ PULS X
+NEW LDY FREE
+ LDD ,Y
+ BMI NEW0
+ STD FREE
+ RTS
+***
+***  ( GBC ) SUBR
+***      garbage collection
+***      val <= # of collected cells
+***
+GBC PSHS U,CC
+ ORCC #$50
+ BSR MARKS
+ BSR COLLCT
+ TFR U,X
+ PULS U,CC
+ CMPX #3
+ LBCS ERRGBC
+ LBSR MNAX
+ LDX #GMSG
+ LDA GBCSW
+ LBNE MSG
+ RTS
+*
+*  mark used cells
+*
+MARKS LDY #ATMTOP
+MARKS1 LDX ,Y++
+ BSR MARK
+ LDX ,y++
+ BSR MARK
+ LDX ,Y
+ CMPX #CELBTM
+ BCC MARKS2
+ BSR MARK
+MARKS2 LEAY 3,Y
+MARKS3 LDA ,Y+
+ BNE MARKS3
+ CMPY ATMEND
+ BCS MARKS1
+ BRA MARKS5
+*
+MARKS4 LDX ,U++
+ BMI MARKS5
+ BSR MARK
+MARKS5 CMPU #USKBTM
+ BCS MARKS4
+ LDX CATCHL
+ BSR MARK
+ RTS
+*
+*  mark list ( X )
+*
+MARK0 PSHS X
+ CMPS #LSPBTM+30
+ LBCS QUIT
+ TFR D,X
+ BSR MARK
+ PULS X
+ LDX 2,X
+MARK CMPX #CELTOP
+ BCS MAKRTS
+ LDD ,X
+ BITB #1
+ BNE MAKRTS
+ INC 1,X
+ TSTA
+ BPL MARK0
+MAKRTS RTS
+*
+*  collect frdd cells
+*
+COLLCT LDX #CELTOP
+ LDY #NIL
+ LDU #0
+COLL1 LDB 1,X
+ BITB #1
+ BNE COLL2
+ STY ,X
+ LEAY ,X
+ LEAU 1,U
+ BRA COLL3
+COLL2 DEC 1,X
+COLL3 LEAX 4,X
+ CMPX #CELBTM
+ BCS COLL1
+ STY FREE
+ RTS
+*
+*
+GMSG FCC /--Garbage Collection--/,CR,LF,0
+
+
+*--------------------------------------
+*
+*      DISK I/O
+*
+*--------------------------------------
+***
+***  ( MREAD filename ) SUBR
+***      read s-expr from DISK
+***      val <= s-expr
+***
+MREAD BSR OPENR open file
+ LBSR READ read s-expr
+ BRA CLOSEI close file
+***
+***  ( MPRINT filename expr ) SUBR
+***      write expr into DISK file
+***      val <= expr
+***
+MPRINT BSR OPENW open output file
+ LEAX ,Y
+ LBSR PRINT print expr
+ BRA CLOSEO close file
+***
+***  ( LOAD 'filename ) FSUBR
+***      load programs
+***      val <= NIL
+***
+LOAD LDX ,X
+***
+***  ( OPENR filename ) SUBR
+***      open input file
+***      val <= NIL
+***
+OPENR PSHS X
+ BSR CLOSEI close input file
+ PULS X
+ LBSR STRING
+ BRA OPENFI open input file
+***
+***  ( OPENW filename ) SUBR
+***      open output file
+***      val <= NIL
+***
+OPENW PSHS X
+ BSR CLOSEO close output file
+ PULS X
+ LBSR STRING
+ BRA OPENFO open output file
+***
+***  ( CLOSER ) SUBR
+***      close read file
+***      val <= NIL
+***
+CLOSER EQU CLOSEI
+***
+***  ( CLOSEW ) SUBR
+***      close write file
+***      val <= NIL
+***
+CLOSEW EQU CLOSEO
+***
+***  ( CLOSE ) SUBR
+***      close I/O files
+***      val <= NIL
+***
+CLOSE BSR CLOSEI
+ BRA CLOSEO
+***
+***  ( QUIT ) SUBR
+***      terminate lisp, return to monitor
+***
+QUIT BSR CLOSE close any open files
+ LDX #QMSG
+ LBSR MSG print message
+ BRA MON
+*
+QMSG FCC CR,LF
+ FCC /may the force be with you!/
+ FCB CR,LF,0
+***
+***  ( DOS 'command ) FSUBR
+***      execute DOS command
+***      val <= NIL
+***
+DOS LDX ,X
+ LBSR STRING
+ PSHS Y,U
+ BSR DODOS
+ PULS Y,U,PC
+
+
+***************************************
+*
+*      LISP-09 I/O DRIVERS
+*          1982.9.21
+*
+***************************************
+*
+*  JUMP TABLE
+*
+OUTPUT LBRA OUTPT1
+*    output char in A to terminal ( OUTSW = 0 ) or
+*    disk (OUTSW <> 0 )
+*
+INPUT LBRA INPUT1
+*    input char from terminal ( INSW = 0 ) or disk
+*    ( INSW <> 0 ) without echo
+*
+OPENFO LBRA OPNFO1
+*    open file for output
+*    X = filename pointer ( terminater = 0 )
+*
+OPENFI LBRA OPNFI1
+*    open file for input
+*    X = filename pointer
+*
+CLOSEO LBRA CLSO1
+*    close output file
+*
+CLOSEI LBRA CLSI1
+*    close input file
+*
+DODOS LBRA DODOS1
+*    execute DOS command
+*    X = pointer to DOS command string
+*
+MON JMP FLEX
+*    return to FLEX
+*
+INIT LBRA INI1
+*    initialize system
+*
+**********
+*
+*  SYSTEM ADDRESSES
+*
+FLEX EQU $CD03 FLEX warm start entry
+OUTCH EQU $D3F9 output char ( pointer )
+INCHNE EQU $D3E5 input char ( pointer )
+PUTCHR EQU $CD18 put character
+FMS EQU $D406 FMS call
+PCRLF EQU $CD24 output crlf
+GETFIL EQU $CD2D get file specification
+SETEXT EQU $CD33 set extension
+RPTERR EQU $CD3F report error message
+DOCMND EQU $CD4B call DOS as a subroutine
+FLBUF EQU $C080 FLEX input line buffer
+FLBUFP EQU $CC14 FLEX line buffer pointer
+ESCRTN EQU $CC16 escape return register
+SYSDAT EQU $CC0E system date register
+*
+*  FMS functions
+*
+FMSR EQU 1 : read command
+FMSW EQU 2 : write command
+FMSC EQU 4 : close command
+*
+*  FILE CONTROL BLOCKS
+*
+OUTSW FCB 0 output file switch
+OUTFCB RMB 320 output file FCB
+INSW FCB 0 input file switch
+INFCB RMB 320 input file FCB
+*
+*
+OUTPT1 PSHS B,X,Y
+ LDX #OUTSW
+ TST ,X+
+ BNE FLEXIO
+ JSR PUTCHR
+ PULS B,X,Y,PC
+*
+INPUT1 PSHS B,X,Y
+ LDX #INSW
+ TST ,X+
+ BNE FLEXIO
+ JSR [INCHNE]
+ PULS B,X,Y,PC
+*
+FLEXIO BSR CALFMS
+ PULS B,X,Y,PC
+*
+OPNFO1 BSR SETSTR
+ LDX #OUTFCB
+ JSR GETFIL
+ BCS FILERR
+ LDA #1
+ STA OUTSW
+ JSR SETEXT
+ LDA #FMSW
+ BRA OPNFIL
+*
+OPNFI1 BSR SETSTR
+ LDX #INFCB
+ JSR GETFIL
+ BCS FILERR
+ LDA #1
+ STA INSW
+ JSR SETEXT
+ LDA #FMSR
+OPNFIL STA ,X
+CALFMS JSR FMS
+ BEQ FMSRTS
+ LDA 1,X
+ CMPA #8
+ BEQ FMSEOF
+FILERR JSR RPTERR
+ LBRA WARMS
+FMSEOF BSR CLSI1
+ LDA #CR
+FMSRTS RTS
+*
+SETSTR PSHS Y
+ LDY #FLBUF
+ STY FLBUFP
+STSTR1 LDA ,X+
+ STA ,Y+
+ BNE STSTR1
+ LDA #CR
+ STA ,-Y
+ PULS Y,PC
+*
+DODOS1 BSR SETSTR
+ JSR DOCMND
+ BRA INI1
+*
+CLSO1 LDX #OUTSW
+ BRA CLSIO
+*
+CLSI1 LDX #INSW
+CLSIO TST ,X
+ BEQ FMSRTS
+ CLR ,X+
+ LDA #FMSC
+ BRA OPNFIL
+*
+INI1 LDD #WARMS
+ STD ESCRTN
+ RTS
+
+
+*--------------------------------------
+*
+*      START UP INITIALIZATION
+*
+*--------------------------------------
+*
+XXXXX EQU *
+*
+*
+STARTU LDS #SSKBTM
+ LDU #USKBTM
+ LDX #LSPMSG
+ LDD #(CELBTM-CELTOP)/4
+ BSR MSGOUT
+ LDD #AAAAA-ATMTOP
+ BSR MSGOUT
+ LDD #USKBTM-AAAAA
+ BSR MSGOUT
+ LDD #SSKBTM-LSPBTM
+ BSR MSGOUT
+*
+ LDX #HSHTOP
+STATU0 CLR ,X+
+ CMPX #HSHBTM
+ BNE STATU0
+ LDX #CELTOP
+ LDD #NIL
+ STD FREE
+STATU1 STD ,X++
+ CMPX #CELBTM
+ BNE STATU1
+*
+ LDX #ATMTOP
+STATU2 PSHS X
+ LEAX 7,X
+ LBSR CLRABF
+ LBSR STORES
+ PSHS X
+ LBSR MSA
+ LDX 2,S
+ STX ,Y
+ LDD #AAAAA
+ STD ATMEND
+ LDD #AAAAA+30
+ STD USKTOP
+ PULS X,Y
+ CMPX #AAAAA
+ BNE STATU2
+*
+ LDD #START-COLDS-3
+ STD COLDS+1
+ LBSR INIT
+ LBSR GBC
+ LBRA COLDS
+*
+*  print opening messages
+*
+MSGOUT PSHS D
+ LBSR MSG
+ LDD ,S
+ STX ,S
+ LDX #NX
+ STD 2,X
+ CLR 1,X
+ CLR ,X
+ BSR MSGOU1
+ LBSR TERPRI
+ PULS X,PC
+*
+MSGOU1 LDA #-'0
+ PSHS A,Y
+ LDY #NY
+ LBRA PRINN1
+*
+*  messages
+*
+LSPMSG FCB CR,LF
+ FCC /---------------------------------------------/,CR,LF
+ FCC /LISP-09 Interpreter  version 2.08  1983.10.07/,CR,LF
+ FCC /  Copyright (C) 1982 by Kogakuin University/,CR,LF
+ FCC /---------------------------------------------/,CR,LF
+ FCC /# of free cells  : /,0
+ FCC /atom area, used  : /,0
+ FCC /User stack area  : /,0
+ FCC /System stack area: /,0
+
+
+*--------------------------------------
+*
+*      ATOM INFORMATION TABLE
+*
+*--------------------------------------
+*
+ ORG ATMTOP
+*
+*
+*    DATA FORMAT
+*
+*     0,1   : value of atom
+*     2,3   : p-list
+*     4,5   : function value ( expr or address )
+*      6    : function type
+*     7---  : p-name ( terminater = 0 )
+*
+*
+*    MACROES
+*
+OBJ MACRO
+ FDB &1,&2,&3
+ FCB N&4
+ FCC /&5/,0
+ ENDM
+*
+FN MACRO
+ FDB UNDEFI,NIL,&1
+ FCB N&2
+ FCC /&1/,0
+ ENDM
+*
+*
+*
+NIL EQU $418+HSHTOP
+ OBJ NIL,NIL,FALSE,LSUBR,NIL
+T EQU $400+HSHTOP
+ OBJ T,NIL,TRUE,LSUBR,T
+UNDEFI EQU $12A+HSHTOP
+ OBJ UNDEFI,NIL,ERRUND,ERR,undefined
+prompt OBJ COLON,NIL,ERRUND,0,PROMPT
+COLON EQU $200+HSHTOP
+ OBJ UNDEFI,NIL,ERRUND,0,:
+LAMBDA EQU $0AA+HSHTOP
+ OBJ UNDEFI,NIL,ERRUND,0,LAMBDA
+EXPR EQU $142+HSHTOP
+ OBJ UNDEFI,NIL,ERRUND,0,EXPR
+FEXPR EQU $146+HSHTOP
+ OBJ UNDEFI,NIL,ERRUND,0,FEXPR
+MACRO EQU $468+HSHTOP
+ OBJ UNDEFI,NIL,ERRUND,0,MACRO
+*
+QUOTE EQU $692+HSHTOP
+ OBJ UNDEFI,NIL,CAR,FSUBR,QUOTE
+*
+ FN COLDS,SUBR
+ FN WARMS,SUBR
+ FN QUOTIENT,LSUBR
+ FN TIMES,LSUBR
+ FN DIFFERENCE,LSUBR
+ FN PLUS,LSUBR
+ FN MAX,LSUBR
+ FN MIN,LSUBR
+ FN SIGN,SUBR
+ FN ADD1,SUBR
+ FN SUB1,SUBR
+ FN ABS,SUBR
+ FN MINUS,SUBR
+ FN LOGAND,SUBR
+ FN LOGOR,SUBR
+ FN LOGXOR,SUBR
+ FN REMAINDER,SUBR
+ FN DIVIDE,SUBR
+ FN GCD,SUBR
+ FN RND,SUBR
+ FN INC,FSUBR
+ FN DEC,FSUBR
+ FN CALL,SUBR
+ FN POKE,SUBR
+ FN PEEK,SUBR
+ FN ATOMLENGTH,SUBR
+ FN LENGTH,SUBR
+ FN ERROR,SUBR
+ FN CRLF,SUBR
+ FN SPACES,SUBR
+ FN PRINT,SUBR
+ FN TERPRI,SUBR
+ FN LPRI,SUBR
+ FN PRIN1,SUBR
+ FN TYO,SUBR
+ FN PRINH,SUBR
+ FN TYI,SUBR
+ FN READCH,SUBR
+ FN GETCH,SUBR
+ FN READ,SUBR
+ FN IMPLODE,SUBR
+ FN CONCAT,LSUBR
+ FN EXPLODE,SUBR
+ OBJ UNDEFI,NIL,EXPLN,SUBR,EXPLODEN
+ FN ATOMCDR,SUBR
+ FN ATOMCAR,SUBR
+ FN ASCII,SUBR
+ FN GENSYM,SUBR
+ FN EVAL,SUBR
+ OBJ UNDEFI,NIL,EVLIS+2,SUBR,EVLIS
+ OBJ UNDEFI,NIL,EVBODY+2,SUBR,EVBODY
+ FN COND,FSUBR
+ FN MAPCAR,SUBR
+ FN MAPCAN,SUBR
+ FN MAPC,SUBR
+ FN FUNCALL,LSUBR
+ FN APPLY,SUBR
+ FN DEFUN,FSUBR
+ FN DE,FSUBR
+ FN DF,FSUBR
+ FN DM,FSUBR
+ FN SET,SUBR
+ FN SETQ,FSUBR
+ FN SETQQ,FSUBR
+ FN FVALUE,SUBR
+ FN PROPLIST,SUBR
+ FN GET,SUBR
+ FN PUT,LSUBR
+ FN CARMODE,SUBR
+ FN GBCMODE,SUBR
+ FN ECHOMODE,SUBR
+ FN PROG,FSUBR
+ FN LOOP,FSUBR
+ FN GO,FSUBR
+ FN RETURN,SUBR
+ FN PROGN,LSUBR
+ FN PROG1,LSUBR
+ FN PROG2,LSUBR
+ FN CATCH,FSUBR
+ FN THROW,FSUBR
+ FN ALPHORDER,SUBR
+ FN GREATERP,SUBR
+ FN LESSP,SUBR
+ FN SYMBOLP,SUBR
+ FN NUMBERP,SUBR
+ FN ATOM,SUBR
+ FN LISTP,SUBR
+ FN EQ,SUBR
+ FN NULL,SUBR
+ FN NOT,SUBR
+ FN PLUSP,SUBR
+ FN MINUSP,SUBR
+ FN ONEP,SUBR
+ FN ZEROP,SUBR
+ FN EQUAL,SUBR
+ FN MEMBER,SUBR
+ FN ASSOC,SUBR
+ FN MEMQ,SUBR
+ FN ASSQ,SUBR
+ FN CAAAR,SUBR
+ FN CAADR,SUBR
+ FN CADAR,SUBR
+ FN CADDR,SUBR
+ FN CDAAR,SUBR
+ FN CDADR,SUBR
+ FN CDDAR,SUBR
+ FN CDDDR,SUBR
+ FN CAAR,SUBR
+ FN CADR,SUBR
+ FN CDAR,SUBR
+ FN CDDR,SUBR
+ FN CAR,SUBR
+ FN CDR,SUBR
+ FN LAST,SUBR
+ FN REVERSE,SUBR
+ FN COPY,SUBR
+ FN APPEND,LSUBR
+ FN NCONC,LSUBR
+ FN AND,FSUBR
+ FN OR,FSUBR
+ FN RPLACA,SUBR
+ FN RPLACD,SUBR
+ FN LIST,LSUBR
+ FN OBLIST,SUBR
+ FN POP,FSUBR
+ FN PUSH,FSUBR
+ FN CONS,SUBR
+ FN GBC,SUBR
+ FN MREAD,SUBR
+ FN MPRINT,SUBR
+ FN LOAD,FSUBR
+ FN OPENR,SUBR
+ FN OPENW,SUBR
+ FN CLOSER,SUBR
+ FN CLOSEW,SUBR
+ FN CLOSE,SUBR
+ FN QUIT,SUBR
+ FN DOS,FSUBR
+*
+*
+*
+AAAAA EQU *
+ END COLDS
